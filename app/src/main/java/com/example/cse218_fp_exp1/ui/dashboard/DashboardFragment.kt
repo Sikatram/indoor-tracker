@@ -7,6 +7,8 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
+import androidx.navigation.fragment.findNavController
+import com.example.cse218_fp_exp1.R
 import com.example.cse218_fp_exp1.databinding.FragmentDashboardBinding
 
 class DashboardFragment : Fragment() {
@@ -31,6 +33,10 @@ class DashboardFragment : Fragment() {
         val textView: TextView = binding.textDashboard
         dashboardViewModel.text.observe(viewLifecycleOwner) {
             textView.text = it
+        }
+
+        binding.button.setOnClickListener {
+            findNavController().navigate(R.id.action_dashboard_to_map)
         }
         return root
     }
