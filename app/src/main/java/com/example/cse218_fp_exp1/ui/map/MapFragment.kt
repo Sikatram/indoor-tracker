@@ -3,17 +3,26 @@ package com.example.cse218_fp_exp1.ui.map
 import android.graphics.*
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import com.estimote.mustard.rx_goodness.rx_requirements_wizard.Requirement
+import com.estimote.mustard.rx_goodness.rx_requirements_wizard.RequirementsWizardFactory
+import com.estimote.proximity_sdk.api.*
 import com.example.cse218_fp_exp1.databinding.FragmentMapBinding
 import kotlin.math.min
 import kotlin.random.Random
 
+
 class MapFragment : Fragment() {
 
     private var _binding: FragmentMapBinding? = null
+    private var handler: ProximityObserver.Handler? = null
+    private var observer: ProximityObserver? = null
+    private var zone: ProximityZone? = null
+    private val cloudCredentials = EstimoteCloudCredentials("beacon-test-eric-chs" , "a0545bb6c94e40729210f58edf665bd2")
 
     // This property is only valid between onCreateView and
     // onDestroyView.
@@ -27,11 +36,13 @@ class MapFragment : Fragment() {
     ): View {
         super.onCreateView(inflater, container, savedInstanceState)
         _binding = FragmentMapBinding.inflate(inflater, container, false)
+
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
         draw = MyDrawable()
 
         binding.buttonCenter.setOnClickListener {
@@ -60,19 +71,67 @@ class MapFragment : Fragment() {
         binding.imageFirst.setImageDrawable(draw)
         binding.imageFirst.invalidate()
 
+        RequirementsWizardFactory.createEstimoteRequirementsWizard().fulfillRequirements(
+            requireActivity(),
+            fun() {
+
+                observer = ProximityObserverBuilder(requireContext(), cloudCredentials)
+                    .onError { throwable ->
+                        Log.e("estimote", "proximity observer error: $throwable")
+                    }
+                    .withBalancedPowerMode()
+                    .build()
+
+                zone = ProximityZoneBuilder()
+                    .forTag("Eric")
+                    .inCustomRange(3.0)
+                    .onEnter (
+                        fun(ctx: ProximityZoneContext){
+                            Log.e("estimote", ">>>>> ENTERED ${ctx.tag} ${ctx.deviceId}")
+                        }
+                    )
+                    .onExit (
+                        fun(ctx: ProximityZoneContext) {
+                            Log.e("estimote", ">>>>> EXITED ${ctx.tag} ${ctx.deviceId}")
+                        }
+                    )
+                    .onContextChange (
+                        fun(ctxs: Set<ProximityZoneContext>) {
+                            Log.e("estimote", ">>>>> Changed ${ctxs.size} beacons")
+                            var iter = ctxs.iterator()
+                            var ctx: ProximityZoneContext
+                            while (iter.hasNext()) {
+                                ctx = iter.next()
+                                Log.e("estimote", "\t${ctx.tag} ${ctx.deviceId}")
+                            }
+                        }
+                    )
+                    .build()
+
+                handler = observer!!.startObserving(zone!!)
+                Log.e("estimote", "Started Observing")
+            },
+            fun(missing: List<Requirement>) {println("Missing permissions $missing")},
+            fun(t: Throwable) {println("Error: ${t.message}")}
+        )
+
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
         draw = null
+        if (handler != null ) {
+            Log.e("estimote", "Stop observing")
+            handler!!.stop()
+        }
     }
 
     class MyDrawable : Drawable() {
         private var numPoints: Int = 20
-        private var points: Array<Pair<Float, Float>?> = arrayOfNulls<Pair<Float, Float>>(numPoints)
+        private var points: Array<Pair<Float, Float>?> = arrayOfNulls(numPoints)
 
-        var userPos: Pair<Float, Float> = 0f to 0f
+        private var userPos: Pair<Float, Float> = 0f to 0f
         var centered: Boolean = true
 
         private val redPaint: Paint = Paint().apply { setARGB(255, 255, 0, 0) }
@@ -114,7 +173,7 @@ class MapFragment : Fragment() {
         }
 
         override fun draw(canvas: Canvas) {
-            println("starting draw")
+            //println("starting draw")
             canvas.drawColor(Color.GREEN)
             // Get the drawable's bounds
             val width: Int = bounds.width()
@@ -123,7 +182,7 @@ class MapFragment : Fragment() {
 
             // Draw a red circle in the center mark user position
 
-            var (x, y) = translatePosition(userPos)
+            val (x, y) = translatePosition(userPos)
             //println("user: $x, $y")
 
             canvas.drawCircle(x, y, radius, redPaint)
@@ -132,10 +191,7 @@ class MapFragment : Fragment() {
             var i = 1
             for (point in points) {
                 // Add randomly placed dots
-                x = Random.nextFloat() * bounds.width().toFloat()
-                y = Random.nextFloat() * bounds.height().toFloat()
-
-                var (xf, yf) = translatePosition(point!!)
+                val (xf, yf) = translatePosition(point!!)
                 //println("point $i: $xf, $yf")
                 canvas.drawCircle(xf, yf, radius, blackPaint)
                 blackPaint.apply { setARGB(255, 50*i, 50*i, 50*i) }
