@@ -22,6 +22,7 @@ class MapFragment : Fragment() {
     private var handler: ProximityObserver.Handler? = null
     private var observer: ProximityObserver? = null
     private var zone: ProximityZone? = null
+    // Set this to your app id/token from cloud.estimote website
     private val cloudCredentials = EstimoteCloudCredentials("beacon-test-eric-chs" , "a0545bb6c94e40729210f58edf665bd2")
 
     // This property is only valid between onCreateView and
@@ -71,10 +72,13 @@ class MapFragment : Fragment() {
         binding.imageFirst.setImageDrawable(draw)
         binding.imageFirst.invalidate()
 
+        // Create estimote monitoring
+        // use helper factory to ask for required permissions
         RequirementsWizardFactory.createEstimoteRequirementsWizard().fulfillRequirements(
             requireActivity(),
-            fun() {
-
+            // function that runs when we have required permissions
+            onRequirementsFulfilled= fun () {
+                // create observer from our credentials
                 observer = ProximityObserverBuilder(requireContext(), cloudCredentials)
                     .onError { throwable ->
                         Log.e("estimote", "proximity observer error: $throwable")
@@ -82,21 +86,26 @@ class MapFragment : Fragment() {
                     .withBalancedPowerMode()
                     .build()
 
+                // Build the zone you want to observer
                 zone = ProximityZoneBuilder()
-                    .forTag("Eric")
-                    .inCustomRange(3.0)
+                    .forTag("Eric") // change this tag to the tag you added to your estimotes on cloud.estimote
+                    .inCustomRange(3.0) // range to be considered in the range of the beacons?
                     .onEnter (
-                        fun(ctx: ProximityZoneContext){
+                        // function that's run when you enter within range of a tag, not when you enter in range of a beacon
+                        fun (ctx: ProximityZoneContext){
                             Log.e("estimote", ">>>>> ENTERED ${ctx.tag} ${ctx.deviceId}")
                         }
                     )
                     .onExit (
-                        fun(ctx: ProximityZoneContext) {
+                        // function that's run when you exit  range of a tag, not when you exit range of a beacon
+                        fun (ctx: ProximityZoneContext) {
                             Log.e("estimote", ">>>>> EXITED ${ctx.tag} ${ctx.deviceId}")
                         }
                     )
                     .onContextChange (
-                        fun(ctxs: Set<ProximityZoneContext>) {
+                        // function when # of beacons you are within range of changes
+                        // will probably be our main function we will use
+                        fun (ctxs: Set<ProximityZoneContext>) {
                             Log.e("estimote", ">>>>> Changed ${ctxs.size} beacons")
                             var iter = ctxs.iterator()
                             var ctx: ProximityZoneContext
@@ -108,11 +117,12 @@ class MapFragment : Fragment() {
                     )
                     .build()
 
+                // start observing, save the handler for later so we can stop it in onDestroy
                 handler = observer!!.startObserving(zone!!)
                 Log.e("estimote", "Started Observing")
             },
-            fun(missing: List<Requirement>) {println("Missing permissions $missing")},
-            fun(t: Throwable) {println("Error: ${t.message}")}
+            onRequirementsMissing = fun (missing: List<Requirement>) {Log.e("estimote", "Missing permissions $missing")},
+            onError = fun (t: Throwable) {Log.e("estimote", "Error: ${t.message}")}
         )
 
     }
@@ -121,6 +131,7 @@ class MapFragment : Fragment() {
         super.onDestroyView()
         _binding = null
         draw = null
+        // stop the observation handler
         if (handler != null ) {
             Log.e("estimote", "Stop observing")
             handler!!.stop()
