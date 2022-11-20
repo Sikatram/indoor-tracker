@@ -21,9 +21,16 @@ class MapFragment : Fragment() {
     private var _binding: FragmentMapBinding? = null
     private var handler: ProximityObserver.Handler? = null
     private var observer: ProximityObserver? = null
-    private var zone: ProximityZone? = null
     // Set this to your app id/token from cloud.estimote website
     private val cloudCredentials = EstimoteCloudCredentials("beacon-test-eric-chs" , "a0545bb6c94e40729210f58edf665bd2")
+
+    // map of beacon IDs to the distances
+    private var distances: Map<String, Pair<String, MutableSet<Double>>> = mapOf(
+        "687572e4da15128f8cc1096f874d1a37" to ("L" to mutableSetOf<Double>()), // L
+        "d1610eab3fc6f11a0de3a9924280393d" to ("I" to mutableSetOf<Double>()), // I
+        "257356716b5cd63031e00e52664b2114" to ("N" to mutableSetOf<Double>()), // N
+        "90fe98ec293340f451d32480c3fe262a" to ("E" to mutableSetOf<Double>()), // E
+    )
 
     // This property is only valid between onCreateView and
     // onDestroyView.
@@ -77,54 +84,36 @@ class MapFragment : Fragment() {
         RequirementsWizardFactory.createEstimoteRequirementsWizard().fulfillRequirements(
             requireActivity(),
             // function that runs when we have required permissions
-            onRequirementsFulfilled= fun () {
+            {
                 // create observer from our credentials
                 observer = ProximityObserverBuilder(requireContext(), cloudCredentials)
                     .onError { throwable ->
                         Log.e("estimote", "proximity observer error: $throwable")
                     }
+                    .withEstimoteSecureMonitoringDisabled()
+                    .withTelemetryReportingDisabled()
                     .withBalancedPowerMode()
                     .build()
 
+                var zones: MutableList<ProximityZone> = mutableListOf()
+
                 // Build the zone you want to observer
-                zone = ProximityZoneBuilder()
-                    .forTag("Eric") // change this tag to the tag you added to your estimotes on cloud.estimote
-                    .inCustomRange(3.0) // range to be considered in the range of the beacons?
-                    .onEnter (
-                        // function that's run when you enter within range of a tag, not when you enter in range of a beacon
-                        fun (ctx: ProximityZoneContext){
-                            Log.e("estimote", ">>>>> ENTERED ${ctx.tag} ${ctx.deviceId}")
-                        }
-                    )
-                    .onExit (
-                        // function that's run when you exit  range of a tag, not when you exit range of a beacon
-                        fun (ctx: ProximityZoneContext) {
-                            Log.e("estimote", ">>>>> EXITED ${ctx.tag} ${ctx.deviceId}")
-                        }
-                    )
-                    .onContextChange (
-                        // function when # of beacons you are within range of changes
-                        // will probably be our main function we will use
-                        fun (ctxs: Set<ProximityZoneContext>) {
-                            Log.e("estimote", ">>>>> Changed ${ctxs.size} beacons")
-                            var iter = ctxs.iterator()
-                            var ctx: ProximityZoneContext
-                            while (iter.hasNext()) {
-                                ctx = iter.next()
-                                Log.e("estimote", "\t${ctx.tag} ${ctx.deviceId}")
-                            }
-                        }
-                    )
-                    .build()
+                for (i in 1 .. 20) {
+                    var zone = createZone(index = i, step = 1.0)
+                    zones.add(zone)
+                }
 
                 // start observing, save the handler for later so we can stop it in onDestroy
-                handler = observer!!.startObserving(zone!!)
+                handler = observer!!.startObserving(zones)
                 Log.e("estimote", "Started Observing")
             },
-            onRequirementsMissing = fun (missing: List<Requirement>) {Log.e("estimote", "Missing permissions $missing")},
-            onError = fun (t: Throwable) {Log.e("estimote", "Error: ${t.message}")}
+            { missing: List<Requirement> ->
+                Log.e("estimote", "Missing permissions $missing")
+            },
+            { t: Throwable ->
+                Log.e("estimote", "Error: ${t.message}")
+            }
         )
-
     }
 
     override fun onDestroyView() {
@@ -136,6 +125,56 @@ class MapFragment : Fragment() {
             Log.e("estimote", "Stop observing")
             handler!!.stop()
         }
+    }
+
+    private fun createZone(index: Int, step: Double = 0.5) : ProximityZone{
+        var range = index * step
+        var zone = ProximityZoneBuilder()
+            .forTag("Eric") // change this tag to the tag you added to your estimotes on cloud.estimote
+
+            .inCustomRange(range) // range to be considered in the range of the beacons
+            .onEnter { ctx: ProximityZoneContext ->
+                Log.e("estimote", ">>>>> ENTERED ${ctx.tag} $range meters, ${ctx.deviceId}")
+            }
+            .onExit {ctx: ProximityZoneContext ->
+                Log.e("estimote", ">>>>> EXITED ${ctx.tag} $range meters, ${ctx.deviceId}")
+            }
+            .onContextChange { s_ctx: Set<ProximityZoneContext> ->
+                //Log.e("estimote", ">>>>> Changed ${s_ctx.size} beacons $range meters,")
+                var iter = s_ctx.iterator()
+                var ctx: ProximityZoneContext
+                var inRange: MutableSet<String> = mutableSetOf<String>()
+                while (iter.hasNext()) {
+                    ctx = iter.next()
+                    //Log.e("estimote", "\t${ctx.tag} ${ctx.deviceId}")
+                    inRange.add(ctx.deviceId)
+                }
+
+                for (entry in distances.entries.iterator()) {
+                    var (name, ds) = entry.value
+                    if (inRange.contains(entry.key)) {
+                        // within range meters of beacon
+                        ds.add(range)
+                    } else {
+                        // outside range meters of beacon
+                        ds.remove(range)
+                    }
+
+                    /*
+                    if (ds.isEmpty()){
+
+                        Log.e("estimote", "$name distance: ??? meters")
+                    } else {
+                        Log.e("estimote", "$name distance: ${ds.min()} meters")
+                    }
+                    */
+                }
+                println()
+
+            }
+            .build()
+
+        return zone
     }
 
     class MyDrawable : Drawable() {
