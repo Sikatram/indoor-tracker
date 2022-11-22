@@ -1,8 +1,5 @@
 package com.example.cse218_fp_exp1.ui.notifications
 
-import android.app.Activity
-import android.net.wifi.WifiManager
-import android.os.AsyncTask
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -82,12 +79,6 @@ class NotificationsFragment : Fragment() {
             textView.text = it
         }
          */
-        observer = ProximityObserverBuilder(requireContext(), cloudCredentials)
-            .onError { throwable ->
-                Log.e("estimote", "proximity observer error: $throwable")
-            }
-            .withBalancedPowerMode()
-            .build()
 
         RequirementsWizardFactory.createEstimoteRequirementsWizard().fulfillRequirements(
             requireActivity(),
@@ -143,39 +134,41 @@ class NotificationsFragment : Fragment() {
                 //Log.e("estimote", ">>>>> EXITED ${ctx.tag} $range meters, ${ctx.deviceId}")
             }
             .onContextChange { s_ctx: Set<ProximityZoneContext> ->
-                var now = System.currentTimeMillis()
-                if (now > lastUpdate + 100) {
-                    lastUpdate = now
-                    // Log.e("estimote", ">>>>> Changed ${s_ctx.size} beacons $range meters,")
-                    var iter = s_ctx.iterator()
-                    var ctx: ProximityZoneContext
-                    var inRange: MutableSet<String> = mutableSetOf<String>()
-                    while (iter.hasNext()) {
-                        ctx = iter.next()
-                        //Log.e("estimote", "\t${ctx.tag} ${ctx.deviceId}")
-                        inRange.add(ctx.deviceId)
-                    }
 
-                    for (entry in distances.entries.iterator()) {
-                        var (name, ds) = entry.value
-                        if (inRange.contains(entry.key)) {
-                            // within range meters of beacon
-                            ds.add(range - step)
-                        } else {
-                            // outside range meters of beacon
-                            for (i in ds.filter { it <= range-step}) {
-                                ds.remove(i )
-                            }
+                // Log.e("estimote", ">>>>> Changed ${s_ctx.size} beacons $range meters,")
+                var iter = s_ctx.iterator()
+                var ctx: ProximityZoneContext
+                var inRange: MutableSet<String> = mutableSetOf<String>()
+                while (iter.hasNext()) {
+                    ctx = iter.next()
+                    //Log.e("estimote", "\t${ctx.tag} ${ctx.deviceId}")
+                    inRange.add(ctx.deviceId)
+                }
+
+                for (entry in distances.entries.iterator()) {
+                    var (_, ds) = entry.value
+                    if (inRange.contains(entry.key)) {
+                        // within range meters of beacon
+                        ds.add(range - step)
+                    } else {
+                        // outside range meters of beacon
+                        for (i in ds.filter { it <= range-step}) {
+                            ds.remove(i )
                         }
-                        /*
-                        if (ds.isEmpty()){
-                            Log.e("estimote", "$name distance: ??? meters")
-                        } else {
-                            Log.e("estimote", "$name distance: ${ds.min()} meters")
-                        }
-                        */
                     }
-                    //println()
+                    /*
+                    if (ds.isEmpty()){
+                        Log.e("estimote", "$name distance: ??? meters")
+                    } else {
+                        Log.e("estimote", "$name distance: ${ds.min()} meters")
+                    }
+                    */
+                }
+                //println()
+                var now = System.currentTimeMillis()
+                if (now > lastUpdate + 500) {
+                    lastUpdate = now
+                    refreshButton!!.text = now.toString()
                 }
             }
             .build()
@@ -187,14 +180,13 @@ class NotificationsFragment : Fragment() {
         // 012, 013, 023, 123
         var x: Double = 0.0
         var y: Double = 0.0
-        var p: Pair<Double, Double>? = null
 
         var m = mapOf<String, Double?>(
             beaconIDs[0] to radius[beaconIDs[0]],
             beaconIDs[1] to radius[beaconIDs[1]],
             beaconIDs[2] to radius[beaconIDs[2]],
         )
-        p = threePointCalc(m)
+        var p = threePointCalc(m)
         if (p != null) {
             x += p.first
             y += p.second
