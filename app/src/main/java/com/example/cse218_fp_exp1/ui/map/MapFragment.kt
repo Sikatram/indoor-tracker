@@ -12,8 +12,16 @@ import com.estimote.mustard.rx_goodness.rx_requirements_wizard.Requirement
 import com.estimote.mustard.rx_goodness.rx_requirements_wizard.RequirementsWizardFactory
 import com.estimote.proximity_sdk.api.*
 import com.example.cse218_fp_exp1.databinding.FragmentMapBinding
+import java.util.*
+import kotlin.math.max
 import kotlin.math.min
-import kotlin.random.Random
+
+class Beacon(ID: String, Name: String, Position: Pair<Double, Double>) {
+    var name: String = Name
+    var distances: MutableSet<Double> = mutableSetOf(-1.0)
+    var id: String = ID
+    var position: Pair<Double, Double> = Position
+}
 
 
 class MapFragment : Fragment() {
@@ -26,21 +34,19 @@ class MapFragment : Fragment() {
 
     // map of beacon IDs to the distances
     private var lastUpdate: Long = 0
+    private var lastPositions: Queue<Pair<Double, Double>> = LinkedList<Pair<Double, Double>>()
 
-    private var distances: Map<String, Pair<String, MutableSet<Double>>> = mapOf(
-        "687572e4da15128f8cc1096f874d1a37" to ("L" to mutableSetOf<Double>(-1.0)), // L
-        "d1610eab3fc6f11a0de3a9924280393d" to ("I" to mutableSetOf<Double>(-1.0)), // I
-        "257356716b5cd63031e00e52664b2114" to ("N" to mutableSetOf<Double>(-1.0)), // N
-        "90fe98ec293340f451d32480c3fe262a" to ("E" to mutableSetOf<Double>(-1.0)), // E
+    private var beacons: Map<String, Beacon> = mapOf(
+        "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.0 to 2.0)),
+        "d1610eab3fc6f11a0de3a9924280393d" to Beacon("d1610eab3fc6f11a0de3a9924280393d", "I", (2.0 to 2.0)),
+        "257356716b5cd63031e00e52664b2114" to Beacon("257356716b5cd63031e00e52664b2114", "N", (0.0 to 0.0)),
+        "90fe98ec293340f451d32480c3fe262a" to Beacon("90fe98ec293340f451d32480c3fe262a", "E", (2.0 to 0.0)),
     )
 
-    private var beacons: Map<String, Pair<Double, Double>> = mapOf(
-        "687572e4da15128f8cc1096f874d1a37" to (0.0 to 3.0), // L
-        "d1610eab3fc6f11a0de3a9924280393d" to (3.0 to 3.0), // I
-        "257356716b5cd63031e00e52664b2114" to (0.0 to 0.0), // N
-        "90fe98ec293340f451d32480c3fe262a" to (3.0 to 0.0), // E
-    )
-    private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 3.0) to (0.0 to 3.0)
+    private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 2.0) to (0.0 to 2.0)
+
+    private val STEP: Double = 1.0/3.0
+    private val MAX_QUEUE_SIZE: Int = 4
 
     // This property is only valid between onCreateView and
     // onDestroyView.
@@ -107,9 +113,8 @@ class MapFragment : Fragment() {
                 var zones: MutableList<ProximityZone> = mutableListOf()
 
                 // Build the zone you want to observer
-                for (i in 0 .. 20) {
-                    var zone = createZone(index = i, step = 0.5, offset = 0.5)
-                    zones.add(zone)
+                for (i in 0 until (10/STEP).toInt()) {
+                    zones.add(createZone(index = i, step = STEP, offset = STEP))
                 }
 
                 // start observing, save the handler for later so we can stop it in onDestroy
@@ -138,10 +143,10 @@ class MapFragment : Fragment() {
 
     private fun createZone(index: Int, step: Double = 1.0, offset: Double = 0.0) : ProximityZone{
         var range = index * step + offset
-        for (entry in distances.entries.iterator()) {
-            var (_, ds) = entry.value
-            ds.add(range)
+        for (beacon in beacons.values.iterator()) {
+            beacon.distances.add(range)
         }
+
         var zone = ProximityZoneBuilder()
             .forTag("Eric") // change this tag to the tag you added to your estimotes on cloud.estimote
             .inCustomRange(range) // range to be considered in the range of the beacons
@@ -156,22 +161,21 @@ class MapFragment : Fragment() {
                 // Log.e("estimote", ">>>>> Changed ${s_ctx.size} beacons $range meters,")
                 var iter = s_ctx.iterator()
                 var ctx: ProximityZoneContext
-                var inRange: MutableSet<String> = mutableSetOf<String>()
+                var inRange: MutableSet<String> = mutableSetOf()
                 while (iter.hasNext()) {
                     ctx = iter.next()
                     //Log.e("estimote", "\t${ctx.tag} ${ctx.deviceId}")
                     inRange.add(ctx.deviceId)
                 }
 
-                for (entry in distances.entries.iterator()) {
-                    var (_, ds) = entry.value
-                    if (inRange.contains(entry.key)) {
+                for (beacon in beacons.values.iterator()) {
+                    if (inRange.contains(beacon.id)) {
                         // within range meters of beacon
-                        ds.add(range - step)
+                        beacon.distances.add(range)
                     } else {
                         // outside range meters of beacon
-                        for (i in ds.filter { it <= range-step}) {
-                            ds.remove(i )
+                        for (i in beacon.distances.filter { it < range}) {
+                            beacon.distances.remove(i)
                         }
                     }
                     /*
@@ -184,19 +188,34 @@ class MapFragment : Fragment() {
                 }
                 //println()
                 var now = System.currentTimeMillis()
-                if (now > lastUpdate + 500) {
+                if (now > lastUpdate + 100) {
                     lastUpdate = now
-                    // TODO update here
                     var currentDistances: MutableMap<String, Double?> = mutableMapOf()
-                    for (entry in distances.entries.iterator()) {
-                        var (_, ds) = entry.value
-                        if (ds.isEmpty()){
-                            currentDistances[entry.key] = null
+                    for (beacon in beacons.values.iterator()) {
+                        if (beacon.distances.isEmpty()){
+                            currentDistances[beacon.id] = null
                         } else {
-                            currentDistances[entry.key] = ds.min() - 0.5
+                            currentDistances[beacon.id] = beacon.distances.min() - 0.5
                         }
+                     }
+                    var tempPos = calculateCoordinate(currentDistances)
+                    tempPos = (
+                        min(max(beaconBounds.first.first, tempPos.first), beaconBounds.first.second) to
+                        min(max(beaconBounds.second.first, tempPos.second), beaconBounds.second.second)
+                    )
+
+                    // TODO average last X positions here
+                    if (lastPositions.size > MAX_QUEUE_SIZE){
+                        lastPositions.remove()
                     }
-                    draw!!.userPos = calculateCoordinate(currentDistances)
+                    lastPositions.add(tempPos)
+                    var avgX = 0.0
+                    var avgY = 0.0
+                    for (position in lastPositions.iterator()) {
+                        avgX += position.first
+                        avgY += position.second
+                    }
+                    draw!!.userPos = avgX/lastPositions.size to avgY/lastPositions.size
                     binding.imageFirst.setImageDrawable(draw)
                     binding.imageFirst.invalidate()
                 }
@@ -210,6 +229,7 @@ class MapFragment : Fragment() {
         // 012, 013, 023, 123
         var x: Double = 0.0
         var y: Double = 0.0
+        var ratio = 0
 
         var m = mapOf<String, Double?>(
             beaconIDs[0] to radius[beaconIDs[0]],
@@ -220,9 +240,10 @@ class MapFragment : Fragment() {
         if (p != null) {
             x += p.first
             y += p.second
+            ratio++
         }
 
-        m = mapOf<String, Double?>(
+        m = mapOf(
             beaconIDs[0] to radius[beaconIDs[0]],
             beaconIDs[1] to radius[beaconIDs[1]],
             beaconIDs[3] to radius[beaconIDs[3]],
@@ -231,6 +252,7 @@ class MapFragment : Fragment() {
         if (p != null) {
             x += p.first
             y += p.second
+            ratio++
         }
 
         m = mapOf<String, Double?>(
@@ -242,6 +264,7 @@ class MapFragment : Fragment() {
         if (p != null) {
             x += p.first
             y += p.second
+            ratio++
         }
 
         m = mapOf<String, Double?>(
@@ -253,24 +276,25 @@ class MapFragment : Fragment() {
         if (p != null) {
             x += p.first
             y += p.second
+            ratio++
         }
-        return x/4 to y/4
+        return x/ratio to y/ratio
     }
 
     private fun threePointCalc(beaconRadius: Map<String, Double?>): Pair<Double, Double>? {
         val idIter = beaconRadius.keys.iterator()
         var key = idIter.next()
 
-        val (x1, y1) = beacons[key]?: (-1.0 to -1.0)
+        val (x1, y1) = beacons[key]!!.position
         val r1 = beaconRadius[key] ?: return null
 
         key = idIter.next()
-        val (x2, y2) = beacons[key]?: (-1.0 to -1.0)
+        val (x2, y2) = beacons[key]!!.position
         val r2 = beaconRadius[key]?: return null
 
 
         key = idIter.next()
-        val (x3, y3) = beacons[key]?: (-1.0 to -1.0)
+        val (x3, y3) = beacons[key]!!.position
         val r3 = beaconRadius[key]?: return null
 
         val A = 2*x2 - 2*x1
@@ -288,9 +312,9 @@ class MapFragment : Fragment() {
     class MyDrawable : Drawable() {
         var userPos: Pair<Double, Double> = 0.0 to 0.0
         var centered: Boolean = false
-        var frag: MapFragment? = null
-        var scale: Double? = null
-        var center: Pair<Double, Double>? = null
+        private var frag: MapFragment? = null
+        private var scale: Double? = null
+        private var center: Pair<Double, Double>? = null
 
         private val redPaint: Paint = Paint().apply { setARGB(255, 255, 0, 0) }
         private val blackPaint: Paint = Paint().apply { setARGB(255, 0, 0, 0) }
@@ -315,10 +339,10 @@ class MapFragment : Fragment() {
                 var (vlower, vupper) = frag!!.beaconBounds.second
                 center = (hupper + hlower)/2 to (vupper + vlower)/2
 
-                if (width < height) {
-                    scale = width * 0.8/(hupper + hlower)
+                scale = if (width < height) {
+                    width * 0.8/(hupper + hlower)
                 } else {
-                    scale = height * 0.8/(vupper + vlower)
+                    height * 0.8/(vupper + vlower)
                 }
             }
 
@@ -326,8 +350,8 @@ class MapFragment : Fragment() {
 
             if (centered){
                 // adjust based on users distance from center
-                xOut -=  (userPos.first - width/2)
-                yOut -= (userPos.second - height/2)
+                xOut = width/2 - (userPos.first - x) * scale!!
+                yOut = height/2 - (userPos.second - y) * scale!!
             } else {
                 // absolute
                 xOut = width/2 - (center!!.first - x) * scale!!
@@ -349,18 +373,27 @@ class MapFragment : Fragment() {
 
             val (x, y) = translatePosition(userPos)
             blackPaint.textSize = 48f
+            // TODO Draw debug text
             canvas.drawText("${x.toInt()}, ${y.toInt()}", width.toFloat()/2, height.toFloat()/2, blackPaint)
-            canvas.drawText("${userPos.first.toInt()}, ${userPos.second.toInt()}", width.toFloat()/2, height.toFloat()/2 + 100, blackPaint)
+            canvas.drawText("${String.format("%.2f", userPos.first)}, ${String.format("%.2f", userPos.second)}", width.toFloat()/2, height.toFloat()/2 + 60, blackPaint)
 
 
             //println("user: $x, $y")
 
-            canvas.drawCircle(x.toFloat(), y.toFloat(), radius, redPaint)
-
-            for (point in frag!!.beacons.values) {
+            canvas.drawCircle(x.toFloat(), y.toFloat(), radius*1.5f, redPaint)
+            var i = 2
+            for (beacon in frag!!.beacons.values.iterator()) {
+                var device = beacon.name
+                var point = beacon.position
                 val (x, y) = translatePosition(point)
+                //Log.e("estimote", "$x, $y")
                 canvas.drawCircle(x.toFloat(), y.toFloat(), radius, bluePaint)
+                // TODO drawing debug text
+                canvas.drawText("$device ${x.toInt()}, ${y.toInt()}, ${beacon.distances.min()?: -1.0}", width.toFloat()/2, height.toFloat()/2 + 60*i, blackPaint)
+                i+=1
+
             }
+            //Log.e("estimote", "${bounds.width()}, ${bounds.height()}")
         }
 
         override fun setAlpha(alpha: Int) {
