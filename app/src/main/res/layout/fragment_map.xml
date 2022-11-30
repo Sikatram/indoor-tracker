@@ -24,12 +24,6 @@
             android:layout_weight="9"
             style="?android:attr/buttonBarStyle">
 
-            <Button
-                android:id="@+id/button_center"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:layout_marginHorizontal="5dp"
-                android:text="@string/center_user" />
 
             <Button
                 android:id="@+id/button_absolute"
@@ -37,13 +31,12 @@
                 android:layout_height="match_parent"
                 android:layout_marginHorizontal="5dp"
                 android:text="@string/absolute" />
-
             <Button
-                android:id="@+id/button_new_points"
+                android:id="@+id/button_pin"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
                 android:layout_marginHorizontal="5dp"
-                android:text="@string/new_points" />
+                android:text="@string/pin" />
 
         </LinearLayout>
     </LinearLayout>

@@ -7,11 +7,18 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.fragment.app.setFragmentResult
+import androidx.fragment.app.viewModels
+import androidx.navigation.fragment.findNavController
 import com.estimote.mustard.rx_goodness.rx_requirements_wizard.Requirement
 import com.estimote.mustard.rx_goodness.rx_requirements_wizard.RequirementsWizardFactory
 import com.estimote.proximity_sdk.api.*
+import com.example.cse218_fp_exp1.R
 import com.example.cse218_fp_exp1.databinding.FragmentMapBinding
+import com.example.cse218_fp_exp1.ui.pin.PinFragment
 import java.util.*
 import kotlin.math.max
 import kotlin.math.min
@@ -34,7 +41,7 @@ class MapFragment : Fragment() {
 
     // map of beacon IDs to the distances
     private var lastUpdate: Long = 0
-    private var lastPositions: Queue<Pair<Double, Double>> = LinkedList<Pair<Double, Double>>()
+    private var lastPositions: Queue<Pair<Double, Double>> = LinkedList()
 
     private var beacons: Map<String, Beacon> = mapOf(
         "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.0 to 2.0)),
@@ -48,10 +55,12 @@ class MapFragment : Fragment() {
     private val STEP: Double = 1.0/3.0
     private val MAX_QUEUE_SIZE: Int = 4
 
+    private var draw: MyDrawable? = null
+    private val bundle: Bundle = Bundle()
+
     // This property is only valid between onCreateView and
     // onDestroyView.
     private val binding get() = _binding!!
-    private var draw: MyDrawable? = null
 
     override fun onCreateView(
             inflater: LayoutInflater,
@@ -70,24 +79,23 @@ class MapFragment : Fragment() {
         draw = MyDrawable()
         draw!!.setupSelf(this)
 
-        binding.buttonCenter.setOnClickListener {
-            // findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
-            draw!!.centered = true
-            binding.imageFirst.setImageDrawable(draw)
-            binding.imageFirst.invalidate()
-        }
 
         binding.buttonAbsolute.setOnClickListener {
             // findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
-            draw!!.centered = false
+            draw!!.centered = !draw!!.centered
             binding.imageFirst.setImageDrawable(draw)
             binding.imageFirst.invalidate()
         }
 
-        binding.buttonNewPoints.setOnClickListener {
-            //findNavController().navigate(R.id.action_map_to_dashboard)
-            binding.imageFirst.setImageDrawable(draw)
-            binding.imageFirst.invalidate()
+        binding.buttonPin.setOnClickListener {
+            // findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
+            val bundle = Bundle()
+            val arr = DoubleArray(2)
+            arr[0] = draw!!.userPos.first
+            arr[1] = draw!!.userPos.second
+            bundle.putDoubleArray("user position", arr)
+            setFragmentResult("map pin", bundle)
+            findNavController().navigate(R.id.action_map_to_pin)
         }
 
         binding.imageFirst.setImageDrawable(draw)
@@ -110,7 +118,7 @@ class MapFragment : Fragment() {
                     .withLowLatencyPowerMode()
                     .build()
 
-                var zones: MutableList<ProximityZone> = mutableListOf()
+                val zones: MutableList<ProximityZone> = mutableListOf()
 
                 // Build the zone you want to observer
                 for (i in 0 until (10/STEP).toInt()) {
@@ -142,12 +150,12 @@ class MapFragment : Fragment() {
     }
 
     private fun createZone(index: Int, step: Double = 1.0, offset: Double = 0.0) : ProximityZone{
-        var range = index * step + offset
+        val range = index * step + offset
         for (beacon in beacons.values.iterator()) {
             beacon.distances.add(range)
         }
 
-        var zone = ProximityZoneBuilder()
+        val zone = ProximityZoneBuilder()
             .forTag("Eric") // change this tag to the tag you added to your estimotes on cloud.estimote
             .inCustomRange(range) // range to be considered in the range of the beacons
             .onEnter { ctx: ProximityZoneContext ->
@@ -159,9 +167,9 @@ class MapFragment : Fragment() {
             .onContextChange { s_ctx: Set<ProximityZoneContext> ->
 
                 // Log.e("estimote", ">>>>> Changed ${s_ctx.size} beacons $range meters,")
-                var iter = s_ctx.iterator()
+                val iter = s_ctx.iterator()
                 var ctx: ProximityZoneContext
-                var inRange: MutableSet<String> = mutableSetOf()
+                val inRange: MutableSet<String> = mutableSetOf()
                 while (iter.hasNext()) {
                     ctx = iter.next()
                     //Log.e("estimote", "\t${ctx.tag} ${ctx.deviceId}")
@@ -187,10 +195,10 @@ class MapFragment : Fragment() {
                     */
                 }
                 //println()
-                var now = System.currentTimeMillis()
+                val now = System.currentTimeMillis()
                 if (now > lastUpdate + 100) {
                     lastUpdate = now
-                    var currentDistances: MutableMap<String, Double?> = mutableMapOf()
+                    val currentDistances: MutableMap<String, Double?> = mutableMapOf()
                     for (beacon in beacons.values.iterator()) {
                         if (beacon.distances.isEmpty()){
                             currentDistances[beacon.id] = null
@@ -225,13 +233,13 @@ class MapFragment : Fragment() {
     }
 
     private fun calculateCoordinate(radius: Map<String, Double?>): Pair<Double, Double> {
-        var beaconIDs = radius.keys.toList()
+        val beaconIDs = radius.keys.toList()
         // 012, 013, 023, 123
         var x: Double = 0.0
         var y: Double = 0.0
         var ratio = 0
 
-        var m = mapOf<String, Double?>(
+        var m = mapOf(
             beaconIDs[0] to radius[beaconIDs[0]],
             beaconIDs[1] to radius[beaconIDs[1]],
             beaconIDs[2] to radius[beaconIDs[2]],
@@ -255,7 +263,7 @@ class MapFragment : Fragment() {
             ratio++
         }
 
-        m = mapOf<String, Double?>(
+        m = mapOf(
             beaconIDs[0] to radius[beaconIDs[0]],
             beaconIDs[3] to radius[beaconIDs[3]],
             beaconIDs[2] to radius[beaconIDs[2]],
@@ -267,7 +275,7 @@ class MapFragment : Fragment() {
             ratio++
         }
 
-        m = mapOf<String, Double?>(
+        m = mapOf(
             beaconIDs[3] to radius[beaconIDs[3]],
             beaconIDs[1] to radius[beaconIDs[1]],
             beaconIDs[2] to radius[beaconIDs[2]],
@@ -335,8 +343,8 @@ class MapFragment : Fragment() {
             val height: Double = bounds.height().toDouble()
 
             if (scale == null || center == null) {
-                var (hlower, hupper) = frag!!.beaconBounds.first
-                var (vlower, vupper) = frag!!.beaconBounds.second
+                val (hlower, hupper) = frag!!.beaconBounds.first
+                val (vlower, vupper) = frag!!.beaconBounds.second
                 center = (hupper + hlower)/2 to (vupper + vlower)/2
 
                 scale = if (width < height) {
@@ -383,13 +391,13 @@ class MapFragment : Fragment() {
             canvas.drawCircle(x.toFloat(), y.toFloat(), radius*1.5f, redPaint)
             var i = 2
             for (beacon in frag!!.beacons.values.iterator()) {
-                var device = beacon.name
-                var point = beacon.position
+                val device = beacon.name
+                val point = beacon.position
                 val (x, y) = translatePosition(point)
                 //Log.e("estimote", "$x, $y")
                 canvas.drawCircle(x.toFloat(), y.toFloat(), radius, bluePaint)
                 // TODO drawing debug text
-                canvas.drawText("$device ${x.toInt()}, ${y.toInt()}, ${beacon.distances.min()?: -1.0}", width.toFloat()/2, height.toFloat()/2 + 60*i, blackPaint)
+                canvas.drawText("$device ${x.toInt()}, ${y.toInt()}, ${beacon.distances.min()}", width.toFloat()/2, height.toFloat()/2 + 60*i, blackPaint)
                 i+=1
 
             }
@@ -404,6 +412,7 @@ class MapFragment : Fragment() {
             // This method is required
         }
 
+        @Deprecated("Idk android studio told me to")
         override fun getOpacity(): Int =
             // Must be PixelFormat.UNKNOWN, TRANSLUCENT, TRANSPARENT, or OPAQUE
             PixelFormat.OPAQUE

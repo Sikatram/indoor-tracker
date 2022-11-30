@@ -5,7 +5,7 @@
     <string name="title_notifications">Notifications</string>
     <string name="title_map">Map</string>
     <!-- TODO: Remove or change this placeholder text -->
-    <string name="center_user">Centered</string>
+    <string name="pin">Pin</string>
     <string name="absolute">Absolute</string>
     <string name="new_points">New Points</string>
 

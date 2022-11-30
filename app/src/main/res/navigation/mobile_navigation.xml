@@ -36,6 +36,16 @@
         <action
             android:id="@+id/action_map_to_dashboard"
             app:destination="@id/navigation_dashboard" />
+        <action
+            android:id="@+id/action_map_to_pin"
+            app:destination="@id/navigation_pin" />
     </fragment>
+
+    <fragment
+        android:id="@+id/navigation_pin"
+        android:name="com.example.cse218_fp_exp1.ui.pin.PinFragment"
+        android:label="@string/pin"
+        tools:layout="@layout/fragment_pin"
+        />
 
 </navigation>
