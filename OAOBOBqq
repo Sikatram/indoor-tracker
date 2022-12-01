@@ -1,0 +1,67 @@
+[1mdiff --git a/app/src/main/java/com/example/cse218_fp_exp1/ui/map/MapFragment.kt b/app/src/main/java/com/example/cse218_fp_exp1/ui/map/MapFragment.kt[m
+[1mindex 21380bc..e3cf592 100644[m
+[1m--- a/app/src/main/java/com/example/cse218_fp_exp1/ui/map/MapFragment.kt[m
+[1m+++ b/app/src/main/java/com/example/cse218_fp_exp1/ui/map/MapFragment.kt[m
+[36m@@ -187,35 +187,36 @@[m [mclass MapFragment : Fragment() {[m
+                     */[m
+                 }[m
+                 //println()[m
+[32m+[m
+[32m+[m[32m                var currentDistances: MutableMap<String, Double?> = mutableMapOf()[m
+[32m+[m[32m                for (beacon in beacons.values.iterator()) {[m
+[32m+[m[32m                    if (beacon.distances.isEmpty()){[m
+[32m+[m[32m                        currentDistances[beacon.id] = null[m
+[32m+[m[32m                    } else {[m
+[32m+[m[32m                        currentDistances[beacon.id] = beacon.distances.min() - 0.5[m
+[32m+[m[32m                    }[m
+[32m+[m[32m                 }[m
+[32m+[m[32m                var tempPos = calculateCoordinate(currentDistances)[m
+[32m+[m[32m                tempPos = ([m
+[32m+[m[32m                    min(max(beaconBounds.first.first, tempPos.first), beaconBounds.first.second) to[m
+[32m+[m[32m                    min(max(beaconBounds.second.first, tempPos.second), beaconBounds.second.second)[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m                // TODO average last X positions here[m
+[32m+[m[32m                if (lastPositions.size > MAX_QUEUE_SIZE){[m
+[32m+[m[32m                    lastPositions.remove()[m
+[32m+[m[32m                }[m
+[32m+[m[32m                lastPositions.add(tempPos)[m
+[32m+[m[32m                var avgX = 0.0[m
+[32m+[m[32m                var avgY = 0.0[m
+[32m+[m[32m                for (position in lastPositions.iterator()) {[m
+[32m+[m[32m                    avgX += position.first[m
+[32m+[m[32m                    avgY += position.second[m
+[32m+[m[32m                }[m
+[32m+[m[32m                draw!!.userPos = avgX/lastPositions.size to avgY/lastPositions.size[m
+                 var now = System.currentTimeMillis()[m
+                 if (now > lastUpdate + 100) {[m
+                     lastUpdate = now[m
+[31m-                    var currentDistances: MutableMap<String, Double?> = mutableMapOf()[m
+[31m-                    for (beacon in beacons.values.iterator()) {[m
+[31m-                        if (beacon.distances.isEmpty()){[m
+[31m-                            currentDistances[beacon.id] = null[m
+[31m-                        } else {[m
+[31m-                            currentDistances[beacon.id] = beacon.distances.min() - 0.5[m
+[31m-                        }[m
+[31m-                     }[m
+[31m-                    var tempPos = calculateCoordinate(currentDistances)[m
+[31m-                    tempPos = ([m
+[31m-                        min(max(beaconBounds.first.first, tempPos.first), beaconBounds.first.second) to[m
+[31m-                        min(max(beaconBounds.second.first, tempPos.second), beaconBounds.second.second)[m
+[31m-                    )[m
+[31m-[m
+[31m-                    // TODO average last X positions here[m
+[31m-                    if (lastPositions.size > MAX_QUEUE_SIZE){[m
+[31m-                        lastPositions.remove()[m
+[31m-                    }[m
+[31m-                    lastPositions.add(tempPos)[m
+[31m-                    var avgX = 0.0[m
+[31m-                    var avgY = 0.0[m
+[31m-                    for (position in lastPositions.iterator()) {[m
+[31m-                        avgX += position.first[m
+[31m-                        avgY += position.second[m
+[31m-                    }[m
+[31m-                    draw!!.userPos = avgX/lastPositions.size to avgY/lastPositions.size[m
+                     binding.imageFirst.setImageDrawable(draw)[m
+                     binding.imageFirst.invalidate()[m
+                 }[m

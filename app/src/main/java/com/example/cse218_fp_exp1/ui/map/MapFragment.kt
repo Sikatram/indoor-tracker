@@ -7,18 +7,14 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.setFragmentResult
-import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import com.estimote.mustard.rx_goodness.rx_requirements_wizard.Requirement
 import com.estimote.mustard.rx_goodness.rx_requirements_wizard.RequirementsWizardFactory
 import com.estimote.proximity_sdk.api.*
 import com.example.cse218_fp_exp1.R
 import com.example.cse218_fp_exp1.databinding.FragmentMapBinding
-import com.example.cse218_fp_exp1.ui.pin.PinFragment
 import java.util.*
 import kotlin.math.max
 import kotlin.math.min
@@ -44,15 +40,15 @@ class MapFragment : Fragment() {
     private var lastPositions: Queue<Pair<Double, Double>> = LinkedList()
 
     private var beacons: Map<String, Beacon> = mapOf(
-        "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.0 to 2.0)),
-        "d1610eab3fc6f11a0de3a9924280393d" to Beacon("d1610eab3fc6f11a0de3a9924280393d", "I", (2.0 to 2.0)),
+        "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.0 to 3.0)),
+        "d1610eab3fc6f11a0de3a9924280393d" to Beacon("d1610eab3fc6f11a0de3a9924280393d", "I", (3.0 to 3.0)),
         "257356716b5cd63031e00e52664b2114" to Beacon("257356716b5cd63031e00e52664b2114", "N", (0.0 to 0.0)),
-        "90fe98ec293340f451d32480c3fe262a" to Beacon("90fe98ec293340f451d32480c3fe262a", "E", (2.0 to 0.0)),
+        "90fe98ec293340f451d32480c3fe262a" to Beacon("90fe98ec293340f451d32480c3fe262a", "E", (3.0 to 0.0)),
     )
 
-    private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 2.0) to (0.0 to 2.0)
+    private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 3.0) to (0.0 to 3.0)
 
-    private val STEP: Double = 1.0/3.0
+    private val STEP: Double = 1.0/4.0
     private val MAX_QUEUE_SIZE: Int = 4
 
     private var draw: MyDrawable? = null
@@ -83,6 +79,7 @@ class MapFragment : Fragment() {
         binding.buttonAbsolute.setOnClickListener {
             // findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
             draw!!.centered = !draw!!.centered
+            binding.buttonAbsolute.text = if (draw!!.centered) "Centered" else "Absolute"
             binding.imageFirst.setImageDrawable(draw)
             binding.imageFirst.invalidate()
         }
@@ -160,50 +157,55 @@ class MapFragment : Fragment() {
             .inCustomRange(range) // range to be considered in the range of the beacons
             .onEnter { ctx: ProximityZoneContext ->
                 //Log.e("estimote", ">>>>> ENTERED ${ctx.tag} $range meters, ${ctx.deviceId}")
+                beacons[ctx.deviceId]!!.distances.add(range)
+                beacons[ctx.deviceId]!!.distances.add(range + STEP)
+
             }
             .onExit {ctx: ProximityZoneContext ->
                 //Log.e("estimote", ">>>>> EXITED ${ctx.tag} $range meters, ${ctx.deviceId}")
+                for (i in beacons[ctx.deviceId]!!.distances.filter { it < range}) {
+                    beacons[ctx.deviceId]!!.distances.remove(i)
+                }
             }
             .onContextChange { s_ctx: Set<ProximityZoneContext> ->
+                try {
+                    // Log.e("estimote", ">>>>> Changed ${s_ctx.size} beacons $range meters,")
+                    val iter = s_ctx.iterator()
+                    var ctx: ProximityZoneContext
+                    val inRange: MutableSet<String> = mutableSetOf()
+                    while (iter.hasNext()) {
+                        ctx = iter.next()
+                        //Log.e("estimote", "\t${ctx.tag} ${ctx.deviceId}")
+                        inRange.add(ctx.deviceId)
+                    }
 
-                // Log.e("estimote", ">>>>> Changed ${s_ctx.size} beacons $range meters,")
-                val iter = s_ctx.iterator()
-                var ctx: ProximityZoneContext
-                val inRange: MutableSet<String> = mutableSetOf()
-                while (iter.hasNext()) {
-                    ctx = iter.next()
-                    //Log.e("estimote", "\t${ctx.tag} ${ctx.deviceId}")
-                    inRange.add(ctx.deviceId)
-                }
-
-                for (beacon in beacons.values.iterator()) {
-                    if (inRange.contains(beacon.id)) {
-                        // within range meters of beacon
-                        beacon.distances.add(range)
-                    } else {
-                        // outside range meters of beacon
-                        for (i in beacon.distances.filter { it < range}) {
-                            beacon.distances.remove(i)
+                    for (beacon in beacons.values.iterator()) {
+                        if (inRange.contains(beacon.id)) {
+                            // within range meters of beacon
+                            beacon.distances.add(range)
+                            beacon.distances.add(range + STEP)
+                        } else {
+                            // outside range meters of beacon
+                            for (i in beacon.distances.filter { it < range}) {
+                                beacon.distances.remove(i)
+                            }
                         }
+                        /*
+                        if (ds.isEmpty()){
+                            Log.e("estimote", "$name distance: ??? meters")
+                        } else {
+                            Log.e("estimote", "$name distance: ${ds.min()} meters")
+                        }
+                        */
                     }
-                    /*
-                    if (ds.isEmpty()){
-                        Log.e("estimote", "$name distance: ??? meters")
-                    } else {
-                        Log.e("estimote", "$name distance: ${ds.min()} meters")
-                    }
-                    */
-                }
-                //println()
-                val now = System.currentTimeMillis()
-                if (now > lastUpdate + 100) {
-                    lastUpdate = now
+                    //println()
+
                     val currentDistances: MutableMap<String, Double?> = mutableMapOf()
                     for (beacon in beacons.values.iterator()) {
                         if (beacon.distances.isEmpty()){
                             currentDistances[beacon.id] = null
                         } else {
-                            currentDistances[beacon.id] = beacon.distances.min() - 0.5
+                            currentDistances[beacon.id] = beacon.distances.min() - STEP
                         }
                      }
                     var tempPos = calculateCoordinate(currentDistances)
@@ -224,9 +226,17 @@ class MapFragment : Fragment() {
                         avgY += position.second
                     }
                     draw!!.userPos = avgX/lastPositions.size to avgY/lastPositions.size
-                    binding.imageFirst.setImageDrawable(draw)
-                    binding.imageFirst.invalidate()
+
+                    val now = System.currentTimeMillis()
+                    if (now > lastUpdate + 250) {
+                        lastUpdate = now
+                        binding.imageFirst.setImageDrawable(draw)
+                        binding.imageFirst.invalidate()
+                    }
+                } catch (e: Exception){
+                    Log.e("estimote", e.toString())
                 }
+
             }
             .build()
         return zone
@@ -325,7 +335,7 @@ class MapFragment : Fragment() {
         private var center: Pair<Double, Double>? = null
 
         private val redPaint: Paint = Paint().apply { setARGB(255, 255, 0, 0) }
-        private val blackPaint: Paint = Paint().apply { setARGB(255, 0, 0, 0) }
+        private val blackPaint: Paint = Paint().apply { setARGB(255, 0, 0, 0); textSize=48f }
         private val bluePaint: Paint = Paint().apply { setARGB(255, 0, 100, 255) }
 
         fun setupSelf(f: MapFragment) {
@@ -358,10 +368,11 @@ class MapFragment : Fragment() {
 
             if (centered){
                 // adjust based on users distance from center
+                // use user position as center
                 xOut = width/2 - (userPos.first - x) * scale!!
                 yOut = height/2 - (userPos.second - y) * scale!!
             } else {
-                // absolute
+                // absolute, use center of bounds as center
                 xOut = width/2 - (center!!.first - x) * scale!!
                 yOut = height/2 - (center!!.second - y) * scale!!
             }
@@ -380,7 +391,6 @@ class MapFragment : Fragment() {
             // Draw a red circle in the center mark user position
 
             val (x, y) = translatePosition(userPos)
-            blackPaint.textSize = 48f
             // TODO Draw debug text
             canvas.drawText("${x.toInt()}, ${y.toInt()}", width.toFloat()/2, height.toFloat()/2, blackPaint)
             canvas.drawText("${String.format("%.2f", userPos.first)}, ${String.format("%.2f", userPos.second)}", width.toFloat()/2, height.toFloat()/2 + 60, blackPaint)
@@ -397,7 +407,7 @@ class MapFragment : Fragment() {
                 //Log.e("estimote", "$x, $y")
                 canvas.drawCircle(x.toFloat(), y.toFloat(), radius, bluePaint)
                 // TODO drawing debug text
-                canvas.drawText("$device ${x.toInt()}, ${y.toInt()}, ${beacon.distances.min()}", width.toFloat()/2, height.toFloat()/2 + 60*i, blackPaint)
+                canvas.drawText("$device: ${beacon.distances.min()}m", width.toFloat()/4, height.toFloat()/2 + 60*i, blackPaint)
                 i+=1
 
             }
@@ -412,7 +422,7 @@ class MapFragment : Fragment() {
             // This method is required
         }
 
-        @Deprecated("Idk android studio told me to")
+        @Deprecated("Deprecated in Java")
         override fun getOpacity(): Int =
             // Must be PixelFormat.UNKNOWN, TRANSLUCENT, TRANSPARENT, or OPAQUE
             PixelFormat.OPAQUE
