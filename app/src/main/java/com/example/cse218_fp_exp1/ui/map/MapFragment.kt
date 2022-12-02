@@ -9,13 +9,18 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.setFragmentResult
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import com.estimote.mustard.rx_goodness.rx_requirements_wizard.Requirement
 import com.estimote.mustard.rx_goodness.rx_requirements_wizard.RequirementsWizardFactory
 import com.estimote.proximity_sdk.api.*
+import com.example.cse218_fp_exp1.MainActivity
 import com.example.cse218_fp_exp1.R
 import com.example.cse218_fp_exp1.databinding.FragmentMapBinding
+import com.example.cse218_fp_exp1.db.EmployeeEntity
+import kotlinx.coroutines.launch
 import java.util.*
+import kotlin.collections.ArrayList
 import kotlin.math.max
 import kotlin.math.min
 
@@ -48,11 +53,11 @@ class MapFragment : Fragment() {
 
     private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 3.0) to (0.0 to 3.0)
 
-    private val STEP: Double = 1.0/4.0
-    private val MAX_QUEUE_SIZE: Int = 4
+    private val STEP: Double = 1.0/(3).toDouble()
+    private val MAX_QUEUE_SIZE: Int = 8
 
     private var draw: MyDrawable? = null
-    private val bundle: Bundle = Bundle()
+    var pins: ArrayList<EmployeeEntity> = ArrayList()
 
     // This property is only valid between onCreateView and
     // onDestroyView.
@@ -72,8 +77,16 @@ class MapFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        val employeeDao = (requireActivity() as MainActivity).db!!.employeeDao()
         draw = MyDrawable()
         draw!!.setupSelf(this)
+        lifecycleScope.launch {
+            employeeDao.fetchAllEmployee().collect {
+                pins = ArrayList(it)
+            }
+            binding.imageFirst.setImageDrawable(draw)
+            binding.imageFirst.invalidate()
+        }
 
 
         binding.buttonAbsolute.setOnClickListener {
@@ -86,13 +99,17 @@ class MapFragment : Fragment() {
 
         binding.buttonPin.setOnClickListener {
             // findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
-            val bundle = Bundle()
-            val arr = DoubleArray(2)
-            arr[0] = draw!!.userPos.first
-            arr[1] = draw!!.userPos.second
-            bundle.putDoubleArray("user position", arr)
-            setFragmentResult("map pin", bundle)
-            findNavController().navigate(R.id.action_map_to_pin)
+            // check if user position is loaded
+            if (draw!!.userPos.first != -69.0 && draw!!.userPos.second != -69.0) {
+                // user position valid
+                val bundle = Bundle()
+                val arr = DoubleArray(2)
+                arr[0] = draw!!.userPos.first
+                arr[1] = draw!!.userPos.second
+                bundle.putDoubleArray("user position", arr)
+                setFragmentResult("map pin", bundle)
+                findNavController().navigate(R.id.action_map_to_pin)
+            }
         }
 
         binding.imageFirst.setImageDrawable(draw)
@@ -130,7 +147,7 @@ class MapFragment : Fragment() {
                 Log.e("estimote", "Missing permissions $missing")
             },
             { t: Throwable ->
-                Log.e("estimote", "Error: ${t.message}")
+                //Log.e("estimote", "Error: ${t.message}")
             }
         )
     }
@@ -328,7 +345,7 @@ class MapFragment : Fragment() {
     }
 
     class MyDrawable : Drawable() {
-        var userPos: Pair<Double, Double> = 0.0 to 0.0
+        var userPos: Pair<Double, Double> = -69.0 to -69.0
         var centered: Boolean = false
         private var frag: MapFragment? = null
         private var scale: Double? = null
@@ -336,7 +353,8 @@ class MapFragment : Fragment() {
 
         private val redPaint: Paint = Paint().apply { setARGB(255, 255, 0, 0) }
         private val blackPaint: Paint = Paint().apply { setARGB(255, 0, 0, 0); textSize=48f }
-        private val bluePaint: Paint = Paint().apply { setARGB(255, 0, 100, 255) }
+        private val bluePaint: Paint = Paint().apply { setARGB(255, 0, 120, 255) }
+        private val greenPaint: Paint = Paint().apply { setARGB(255, 20, 220, 50) }
 
         fun setupSelf(f: MapFragment) {
             frag = f
@@ -389,16 +407,14 @@ class MapFragment : Fragment() {
             val radius: Float = min(width, height).toFloat() / 50
 
             // Draw a red circle in the center mark user position
-
             val (x, y) = translatePosition(userPos)
             // TODO Draw debug text
             canvas.drawText("${x.toInt()}, ${y.toInt()}", width.toFloat()/2, height.toFloat()/2, blackPaint)
             canvas.drawText("${String.format("%.2f", userPos.first)}, ${String.format("%.2f", userPos.second)}", width.toFloat()/2, height.toFloat()/2 + 60, blackPaint)
-
-
-            //println("user: $x, $y")
-
             canvas.drawCircle(x.toFloat(), y.toFloat(), radius*1.5f, redPaint)
+
+            // TODO Drawing beacons
+
             var i = 2
             for (beacon in frag!!.beacons.values.iterator()) {
                 val device = beacon.name
@@ -412,6 +428,19 @@ class MapFragment : Fragment() {
 
             }
             //Log.e("estimote", "${bounds.width()}, ${bounds.height()}")
+
+
+
+            // TODO drawing points
+            val halfRadius = radius/2
+            for (pin in frag!!.pins) {
+                val (x, y) = translatePosition(pin.xCoordinate.toDouble(), pin.yCoordinate.toDouble())
+                canvas.drawRect(
+                    RectF(x.toFloat(), y.toFloat(), (x + radius*2).toFloat(), (y + radius*2).toFloat()),
+                    greenPaint
+                )
+                canvas.drawText(pin.name, (x-radius).toFloat(), (y+radius).toFloat(), blackPaint)
+            }
         }
 
         override fun setAlpha(alpha: Int) {

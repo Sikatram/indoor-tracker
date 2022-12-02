@@ -57,11 +57,11 @@ class ItemAdapter(
             holder.llMain.setBackgroundColor(
                 ContextCompat.getColor(
                     holder.itemView.context,
-                    R.color.purple_500
+                    R.color.white
                 )
             )
         } else {
-            holder.llMain.setBackgroundColor(ContextCompat.getColor(context, R.color.purple_500))
+            holder.llMain.setBackgroundColor(ContextCompat.getColor(context, R.color.white))
         }
 // Todo 3 set onclick listem on the icon and invoke update and delete listeners
         //start
