@@ -18,9 +18,10 @@ import com.example.cse218_fp_exp1.MainActivity
 import com.example.cse218_fp_exp1.R
 import com.example.cse218_fp_exp1.databinding.FragmentMapBinding
 import com.example.cse218_fp_exp1.db.EmployeeEntity
+import com.google.android.material.snackbar.BaseTransientBottomBar
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import java.util.*
-import kotlin.collections.ArrayList
 import kotlin.math.max
 import kotlin.math.min
 
@@ -45,13 +46,13 @@ class MapFragment : Fragment() {
     private var lastPositions: Queue<Pair<Double, Double>> = LinkedList()
 
     private var beacons: Map<String, Beacon> = mapOf(
-        "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.0 to 3.0)),
+        "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.5 to 3.0)),
         "d1610eab3fc6f11a0de3a9924280393d" to Beacon("d1610eab3fc6f11a0de3a9924280393d", "I", (3.0 to 3.0)),
-        "257356716b5cd63031e00e52664b2114" to Beacon("257356716b5cd63031e00e52664b2114", "N", (0.0 to 0.0)),
-        "90fe98ec293340f451d32480c3fe262a" to Beacon("90fe98ec293340f451d32480c3fe262a", "E", (3.0 to 0.0)),
+        "257356716b5cd63031e00e52664b2114" to Beacon("257356716b5cd63031e00e52664b2114", "N", (0.5 to 0.5)),
+        "90fe98ec293340f451d32480c3fe262a" to Beacon("90fe98ec293340f451d32480c3fe262a", "E", (3.0 to 0.5)),
     )
 
-    private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 3.0) to (0.0 to 3.0)
+    private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 3.5) to (0.0 to 3.5)
 
     private val STEP: Double = 1.0/(3).toDouble()
     private val MAX_QUEUE_SIZE: Int = 8
@@ -100,16 +101,13 @@ class MapFragment : Fragment() {
         binding.buttonPin.setOnClickListener {
             // findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
             // check if user position is loaded
-            if (draw!!.userPos.first != -69.0 && draw!!.userPos.second != -69.0) {
-                // user position valid
-                val bundle = Bundle()
-                val arr = DoubleArray(2)
-                arr[0] = draw!!.userPos.first
-                arr[1] = draw!!.userPos.second
-                bundle.putDoubleArray("user position", arr)
-                setFragmentResult("map pin", bundle)
-                findNavController().navigate(R.id.action_map_to_pin)
-            }
+            val bundle = Bundle()
+            val arr = DoubleArray(2)
+            arr[0] = draw!!.userPos.first
+            arr[1] = draw!!.userPos.second
+            bundle.putDoubleArray("user position", arr)
+            setFragmentResult("map pin", bundle)
+            findNavController().navigate(R.id.action_map_to_pin)
         }
 
         binding.imageFirst.setImageDrawable(draw)
@@ -124,7 +122,7 @@ class MapFragment : Fragment() {
                 // create observer from our credentials
                 observer = ProximityObserverBuilder(requireContext(), cloudCredentials)
                     .onError { throwable ->
-                        Log.e("estimote", "proximity observer error: $throwable")
+                        Log.d("estimote", "proximity observer error: $throwable")
                     }
                     .withEstimoteSecureMonitoringDisabled()
                     .withTelemetryReportingDisabled()
@@ -135,13 +133,13 @@ class MapFragment : Fragment() {
                 val zones: MutableList<ProximityZone> = mutableListOf()
 
                 // Build the zone you want to observer
-                for (i in 0 until (10/STEP).toInt()) {
+                for (i in 0 until (15/STEP).toInt()) {
                     zones.add(createZone(index = i, step = STEP, offset = STEP))
                 }
 
                 // start observing, save the handler for later so we can stop it in onDestroy
                 handler = observer!!.startObserving(zones)
-                Log.e("estimote", "Started Observing")
+                Log.d("estimote", "Started Observing")
             },
             { missing: List<Requirement> ->
                 Log.e("estimote", "Missing permissions $missing")
@@ -158,7 +156,7 @@ class MapFragment : Fragment() {
         draw = null
         // stop the observation handler
         if (handler != null ) {
-            Log.e("estimote", "Stop observing")
+            Log.d("estimote", "Stop observing")
             handler!!.stop()
         }
     }
@@ -340,8 +338,10 @@ class MapFragment : Fragment() {
         val F = r2*r2 - r3*r3 - x2*x2 + x3*x2 - y2*y2 + y3*y3
         val x = (C*E - F*B) / (E*A - B*D)
         val y = (C*D - A*F) / (B*D - A*E)
-        return x to y
-
+        return (
+            min(max(beaconBounds.first.first, x), beaconBounds.first.second) to
+            min(max(beaconBounds.second.first, y), beaconBounds.second.second)
+        )
     }
 
     class MyDrawable : Drawable() {
@@ -428,8 +428,6 @@ class MapFragment : Fragment() {
 
             }
             //Log.e("estimote", "${bounds.width()}, ${bounds.height()}")
-
-
 
             // TODO drawing points
             val halfRadius = radius/2

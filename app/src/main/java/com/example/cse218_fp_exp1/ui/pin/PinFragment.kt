@@ -1,5 +1,6 @@
 package com.example.cse218_fp_exp1.ui.pin
 
+import android.app.Activity
 import android.app.Dialog
 import android.os.Bundle
 import android.text.Editable
@@ -7,9 +8,8 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
+import android.view.inputmethod.InputMethodManager
 import androidx.appcompat.app.AlertDialog
-
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.setFragmentResultListener
 import androidx.lifecycle.ViewModelProvider
@@ -22,6 +22,8 @@ import com.example.cse218_fp_exp1.databinding.FragmentPinBinding
 import com.example.cse218_fp_exp1.db.EmployeeDao
 import com.example.cse218_fp_exp1.db.EmployeeEntity
 import com.example.cse218_fp_exp1.db.ItemAdapter
+import com.google.android.material.snackbar.BaseTransientBottomBar
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 
 
@@ -67,8 +69,12 @@ class PinFragment : Fragment() {
             // Do something with the result
             val x = result!![0]
             val y = result[1]
-            binding.etXcoordinate.text = Editable.Factory.getInstance().newEditable(String.format("%.2f", x))
-            binding.etYcoordinate.text = Editable.Factory.getInstance().newEditable(String.format("%.2f", y))
+            if (x != -69.0 && y != -69.0) {
+                binding.etXcoordinate.text =
+                    Editable.Factory.getInstance().newEditable(String.format("%.2f", x))
+                binding.etYcoordinate.text =
+                    Editable.Factory.getInstance().newEditable(String.format("%.2f", y))
+            }
         }
     }
     //Todo 1 create an employeeDao param to access the insert method
@@ -82,25 +88,24 @@ class PinFragment : Fragment() {
             xCoord.toDouble()
             yCoord.toDouble()
         } catch (e: java.lang.NumberFormatException) {
-            Toast.makeText(
-                requireContext(),
-                "Coordinates should be a valid number",
-                Toast.LENGTH_SHORT
-            ).show()
+            var snackbar = Snackbar.make(requireView(), "X and Y Coordinates must be valid numbers", BaseTransientBottomBar.LENGTH_SHORT)
+            snackbar.setAction("Dismiss") { snackbar.dismiss() }
+            snackbar.show()
         }
 
         if (name.isNotEmpty() && xCoord.isNotEmpty() && yCoord.isNotEmpty()) {
             lifecycleScope.launch {
                 employeeDao.insert(EmployeeEntity(name = name, xCoordinate = xCoord, yCoordinate = yCoord))
-                Toast.makeText(requireContext(), "Pin saved", Toast.LENGTH_SHORT).show()
                 binding?.etName?.text?.clear()
+                var snackbar = Snackbar.make(requireView(), "Pin $name saved", BaseTransientBottomBar.LENGTH_SHORT)
+                snackbar.setAction("Dismiss") { snackbar.dismiss() }
+                snackbar.show()
+                hideKeyboard()
             }
         } else {
-            Toast.makeText(
-                requireContext(),
-                "Name or Coordinates cannot be blank",
-                Toast.LENGTH_SHORT
-            ).show()
+            var snackbar = Snackbar.make(requireView(), "Name or Coordinates cannot be blank", BaseTransientBottomBar.LENGTH_SHORT)
+            snackbar.setAction("Dismiss") { snackbar.dismiss() }
+            snackbar.show()
         }
     }
     /** Todo 4: create an employee param to pass into updateRecordDialog and updateRecordDialog
@@ -111,8 +116,6 @@ class PinFragment : Fragment() {
                                                 employeeDao: EmployeeDao) {
 
         if (employeesList.isNotEmpty()) {
-
-
             // Adapter class is initialized and list is passed in the param.
             val itemAdapter = ItemAdapter(employeesList,{updateId ->
                 updateRecordDialog(updateId,employeeDao)
@@ -167,25 +170,23 @@ class PinFragment : Fragment() {
                 xCoord.toDouble()
                 yCoord.toDouble()
             } catch (e: java.lang.NumberFormatException) {
-                Toast.makeText(
-                    requireContext(),
-                    "Coordinates should be a valid number",
-                    Toast.LENGTH_SHORT
-                ).show()
+                var snackbar = Snackbar.make(requireView(), "X and Y Coordinates must be valid numbers", BaseTransientBottomBar.LENGTH_SHORT)
+                snackbar.setAction("Dismiss") { snackbar.dismiss() }
+                snackbar.show()
             }
             if (name.isNotEmpty() && xCoord.isNotEmpty() && yCoord.isNotEmpty()) {
                 lifecycleScope.launch {
                     employeeDao.update(EmployeeEntity(id, name, xCoord, yCoord))
-                    Toast.makeText(requireContext(), "Pin Updated.", Toast.LENGTH_SHORT)
-                        .show()
+                    var snackbar = Snackbar.make(requireView(), "Pin $name updated", BaseTransientBottomBar.LENGTH_SHORT)
+                    snackbar.setAction("Dismiss") { snackbar.dismiss() }
+                    snackbar.show()
                     updateDialog.dismiss() // Dialog will be dismissed
                 }
+                hideKeyboard()
             } else {
-                Toast.makeText(
-                    requireContext(),
-                    "Name or Coordinates cannot be blank",
-                    Toast.LENGTH_SHORT
-                ).show()
+                var snackbar = Snackbar.make(requireView(), "Name or Coordinates cannot be blank", BaseTransientBottomBar.LENGTH_SHORT)
+                snackbar.setAction("Dismiss") { snackbar.dismiss() }
+                snackbar.show()
             }
         }
         binding.tvCancel.setOnClickListener{
@@ -206,24 +207,19 @@ class PinFragment : Fragment() {
         //set title for alert dialog
         builder.setTitle("Delete Pin")
         //set message for alert dialog
-        builder.setMessage("Are you sure you wants to delete ${employee.name}?")
+        builder.setMessage("Are you sure you wants to delete pin ${employee.name}?")
         builder.setIcon(android.R.drawable.ic_dialog_alert)
 
         //performing positive action
         builder.setPositiveButton("Yes") { dialogInterface, _ ->
             lifecycleScope.launch {
                 employeeDao.delete(EmployeeEntity(id))
-                Toast.makeText(
-                    requireContext(),
-                    "Pin deleted successfully.",
-                    Toast.LENGTH_SHORT
-                ).show()
-
+                var snackbar = Snackbar.make(requireView(), "Pin ${employee.name} successfully deleted", BaseTransientBottomBar.LENGTH_SHORT)
+                snackbar.setAction("Dismiss") { snackbar.dismiss() }
+                snackbar.show()
                 dialogInterface.dismiss() // Dialog will be dismissed
             }
-
         }
-
         //performing negative action
         builder.setNegativeButton("No") { dialogInterface, which ->
             dialogInterface.dismiss() // Dialog will be dismissed
@@ -239,6 +235,12 @@ class PinFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    private fun hideKeyboard() {
+        val imm: InputMethodManager =
+            requireContext().getSystemService(Activity.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(requireView().windowToken, 0)
     }
 
 }
