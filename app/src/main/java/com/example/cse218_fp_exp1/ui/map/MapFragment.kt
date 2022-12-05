@@ -32,9 +32,9 @@ class Beacon(ID: String, Name: String, Position: Pair<Double, Double>) {
     var position: Pair<Double, Double> = Position
 }
 
+var _DEBUG = false
 
 class MapFragment : Fragment() {
-
     private var _binding: FragmentMapBinding? = null
     private var handler: ProximityObserver.Handler? = null
     private var observer: ProximityObserver? = null
@@ -55,7 +55,7 @@ class MapFragment : Fragment() {
     private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 3.5) to (0.0 to 3.5)
 
     private val STEP: Double = 1.0/(3).toDouble()
-    private val MAX_QUEUE_SIZE: Int = 8
+    private val MAX_QUEUE_SIZE: Int = 16
 
     private var draw: MyDrawable? = null
     var pins: ArrayList<EmployeeEntity> = ArrayList()
@@ -229,7 +229,6 @@ class MapFragment : Fragment() {
                         min(max(beaconBounds.second.first, tempPos.second), beaconBounds.second.second)
                     )
 
-                    // TODO average last X positions here
                     if (lastPositions.size > MAX_QUEUE_SIZE){
                         lastPositions.remove()
                     }
@@ -409,8 +408,10 @@ class MapFragment : Fragment() {
             // Draw a red circle in the center mark user position
             val (x, y) = translatePosition(userPos)
             // TODO Draw debug text
-            canvas.drawText("${x.toInt()}, ${y.toInt()}", width.toFloat()/2, height.toFloat()/2, blackPaint)
-            canvas.drawText("${String.format("%.2f", userPos.first)}, ${String.format("%.2f", userPos.second)}", width.toFloat()/2, height.toFloat()/2 + 60, blackPaint)
+            if (_DEBUG) {
+                canvas.drawText("${x.toInt()}, ${y.toInt()}", width.toFloat()/2, height.toFloat()/2, blackPaint)
+                canvas.drawText("${String.format("%.2f", userPos.first)}, ${String.format("%.2f", userPos.second)}", width.toFloat()/2, height.toFloat()/2 + 60, blackPaint)
+            }
             canvas.drawCircle(x.toFloat(), y.toFloat(), radius*1.5f, redPaint)
 
             // TODO Drawing beacons
@@ -421,16 +422,16 @@ class MapFragment : Fragment() {
                 val point = beacon.position
                 val (x, y) = translatePosition(point)
                 //Log.e("estimote", "$x, $y")
-                canvas.drawCircle(x.toFloat(), y.toFloat(), radius, bluePaint)
+                canvas.drawCircle(x.toFloat(), y.toFloat(), radius/2, bluePaint)
                 // TODO drawing debug text
-                canvas.drawText("$device: ${beacon.distances.min()}m", width.toFloat()/4, height.toFloat()/2 + 60*i, blackPaint)
+                if (_DEBUG){
+                    canvas.drawText("$device: ${beacon.distances.min()}m", width.toFloat()/4, height.toFloat()/2 + 60*i, blackPaint)
+                }
                 i+=1
 
             }
             //Log.e("estimote", "${bounds.width()}, ${bounds.height()}")
 
-            // TODO drawing points
-            val halfRadius = radius/2
             for (pin in frag!!.pins) {
                 val (x, y) = translatePosition(pin.xCoordinate.toDouble(), pin.yCoordinate.toDouble())
                 canvas.drawRect(

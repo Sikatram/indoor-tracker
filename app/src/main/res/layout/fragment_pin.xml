@@ -7,10 +7,11 @@
 
     <EditText
         android:id="@+id/etYcoordinate"
-        android:layout_width="318dp"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:hint="Enter y coordinate"
-        android:inputType="number"
+        android:layout_marginStart="8dp"
+        android:inputType="numberSigned|numberDecimal"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/tvLabelYcoord"
         app:layout_constraintTop_toBottomOf="@+id/etXcoordinate" />
@@ -23,7 +24,7 @@
         android:textSize="18sp"
         app:layout_constraintBottom_toBottomOf="@+id/etYcoordinate"
         app:layout_constraintTop_toTopOf="@+id/etYcoordinate"
-        tools:layout_editor_absoluteX="-1dp" />
+        tools:layout_editor_absoluteX="0dp" />
 
     <TextView
         android:id="@+id/tvNameLabel"
@@ -34,7 +35,8 @@
         app:layout_constraintBottom_toBottomOf="@id/etName"
         app:layout_constraintEnd_toStartOf="@id/etName"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@id/etName" />
+        app:layout_constraintTop_toTopOf="@id/etName"
+        />
 
     <EditText
         android:id="@+id/etName"
@@ -64,7 +66,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
         android:hint="Enter x coordinate"
-        android:inputType="number"
+        android:inputType="numberSigned|numberDecimal"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/tvEmailLabel"
         app:layout_constraintTop_toBottomOf="@id/etName" />
@@ -76,8 +78,8 @@
         android:layout_height="wrap_content"
         android:text="@string/add_pin"
         app:layout_constraintTop_toBottomOf="@+id/etYcoordinate"
-
-        tools:layout_editor_absoluteX="0dp" />
+        android:layout_marginHorizontal="12dp"
+        />
 
     <TextView
         android:id="@+id/tvName"
