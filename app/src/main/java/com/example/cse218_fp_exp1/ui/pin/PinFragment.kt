@@ -144,7 +144,7 @@ class PinFragment : Fragment() {
      * Create an employeeDao param for accessing method from the dao
      * We also launch a coroutine block to fetch the selected employee and update it
      */
-    fun updateRecordDialog(id:Int,employeeDao: EmployeeDao)  {
+    fun updateRecordDialog(id:Int, employeeDao: EmployeeDao)  {
         val updateDialog = Dialog(requireContext(), R.style.Theme_Cse218_fp_exp1)
         updateDialog.setCancelable(false)
         /*Set the screen content from a layout resource.

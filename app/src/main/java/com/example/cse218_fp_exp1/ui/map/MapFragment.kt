@@ -1,7 +1,12 @@
 package com.example.cse218_fp_exp1.ui.map
 
+import android.content.Context.SENSOR_SERVICE
 import android.graphics.*
 import android.graphics.drawable.Drawable
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -18,12 +23,9 @@ import com.example.cse218_fp_exp1.MainActivity
 import com.example.cse218_fp_exp1.R
 import com.example.cse218_fp_exp1.databinding.FragmentMapBinding
 import com.example.cse218_fp_exp1.db.EmployeeEntity
-import com.google.android.material.snackbar.BaseTransientBottomBar
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import java.util.*
-import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.*
 
 class Beacon(ID: String, Name: String, Position: Pair<Double, Double>) {
     var name: String = Name
@@ -32,12 +34,16 @@ class Beacon(ID: String, Name: String, Position: Pair<Double, Double>) {
     var position: Pair<Double, Double> = Position
 }
 
-var _DEBUG = false
+var _DEBUG = true
 
 class MapFragment : Fragment() {
     private var _binding: FragmentMapBinding? = null
     private var handler: ProximityObserver.Handler? = null
     private var observer: ProximityObserver? = null
+    private var sensorManager: SensorManager? = null
+    private var rotationSensor: Sensor? = null
+    private var northListener: NorthListener? = null
+
     // Set this to your app id/token from cloud.estimote website
     private val cloudCredentials = EstimoteCloudCredentials("beacon-test-eric-chs" , "a0545bb6c94e40729210f58edf665bd2")
 
@@ -45,16 +51,19 @@ class MapFragment : Fragment() {
     private var lastUpdate: Long = 0
     private var lastPositions: Queue<Pair<Double, Double>> = LinkedList()
 
+    // TODO calibrate these per room
+    var OFFSET_HEADING: Double = 30 * Math.PI/180
     private var beacons: Map<String, Beacon> = mapOf(
         "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.5 to 3.0)),
         "d1610eab3fc6f11a0de3a9924280393d" to Beacon("d1610eab3fc6f11a0de3a9924280393d", "I", (3.0 to 3.0)),
         "257356716b5cd63031e00e52664b2114" to Beacon("257356716b5cd63031e00e52664b2114", "N", (0.5 to 0.5)),
         "90fe98ec293340f451d32480c3fe262a" to Beacon("90fe98ec293340f451d32480c3fe262a", "E", (3.0 to 0.5)),
     )
-
     private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 3.5) to (0.0 to 3.5)
+    // TODO end
+    private var userHeading: Double = 0.0
 
-    private val STEP: Double = 1.0/(3).toDouble()
+    private val STEP: Double = 1.0/(3.toDouble())
     private val MAX_QUEUE_SIZE: Int = 16
 
     private var draw: MyDrawable? = null
@@ -77,6 +86,17 @@ class MapFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        northListener = NorthListener(this)
+        sensorManager = (requireContext().getSystemService(SENSOR_SERVICE)) as? SensorManager
+        if (sensorManager != null) {
+            sensorManager!!.registerListener(
+                northListener,
+                sensorManager!!.getDefaultSensor(Sensor.TYPE_ORIENTATION),
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
+        }
+
 
         val employeeDao = (requireActivity() as MainActivity).db!!.employeeDao()
         draw = MyDrawable()
@@ -158,6 +178,29 @@ class MapFragment : Fragment() {
         if (handler != null ) {
             Log.d("estimote", "Stop observing")
             handler!!.stop()
+        }
+        if (sensorManager != null) {
+            sensorManager!!.unregisterListener(northListener)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // to stop the listener and save battery
+        if (sensorManager != null) {
+            sensorManager!!.unregisterListener(northListener)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // code for system's orientation sensor registered listeners
+        if (sensorManager != null) {
+            sensorManager!!.registerListener(
+                northListener,
+                sensorManager!!.getDefaultSensor(Sensor.TYPE_ORIENTATION),
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
         }
     }
 
@@ -242,9 +285,9 @@ class MapFragment : Fragment() {
                     draw!!.userPos = avgX/lastPositions.size to avgY/lastPositions.size
 
                     val now = System.currentTimeMillis()
-                    if (now > lastUpdate + 250) {
+                        if (now > lastUpdate + 125) {
                         lastUpdate = now
-                        binding.imageFirst.setImageDrawable(draw)
+                        //binding.imageFirst.setImageDrawable(draw)
                         binding.imageFirst.invalidate()
                     }
                 } catch (e: Exception){
@@ -259,8 +302,8 @@ class MapFragment : Fragment() {
     private fun calculateCoordinate(radius: Map<String, Double?>): Pair<Double, Double> {
         val beaconIDs = radius.keys.toList()
         // 012, 013, 023, 123
-        var x: Double = 0.0
-        var y: Double = 0.0
+        var x = 0.0
+        var y = 0.0
         var ratio = 0
 
         var m = mapOf(
@@ -349,6 +392,7 @@ class MapFragment : Fragment() {
         private var frag: MapFragment? = null
         private var scale: Double? = null
         private var center: Pair<Double, Double>? = null
+        private var heading: Double = 0.0
 
         private val redPaint: Paint = Paint().apply { setARGB(255, 255, 0, 0) }
         private val blackPaint: Paint = Paint().apply { setARGB(255, 0, 0, 0); textSize=48f }
@@ -381,13 +425,27 @@ class MapFragment : Fragment() {
                 }
             }
 
-            var (xOut, yOut) = center!!
+            var xOut: Double
+            var yOut: Double
 
             if (centered){
                 // adjust based on users distance from center
                 // use user position as center
-                xOut = width/2 - (userPos.first - x) * scale!!
-                yOut = height/2 - (userPos.second - y) * scale!!
+                val tempXOut = width/2 - (userPos.first - x) * scale!!
+                val tempYOut = height/2 - (userPos.second - y) * scale!!
+
+                /*
+                // rotate around users position
+                val cHeading = cos(heading)
+                val sHeading = sin(heading)
+                val xUser = width/2
+                val yUser = height/2
+                xOut = ((tempXOut-xUser) * cHeading) - ((yUser-tempYOut) * sHeading) + xUser
+                xOut = abs((width-xOut))
+                yOut = ((yUser-tempYOut) * cHeading) - ((tempXOut-xUser) * sHeading) + yUser
+                 */
+                xOut = tempXOut
+                yOut = tempYOut
             } else {
                 // absolute, use center of bounds as center
                 xOut = width/2 - (center!!.first - x) * scale!!
@@ -399,6 +457,8 @@ class MapFragment : Fragment() {
 
         override fun draw(canvas: Canvas) {
             //println("starting draw")
+            // cache heading value incase it changes
+            heading = frag!!.userHeading
             canvas.drawColor(Color.LTGRAY)
             // Get the drawable's bounds
             val width: Int = bounds.width()
@@ -407,6 +467,7 @@ class MapFragment : Fragment() {
 
             // Draw a red circle in the center mark user position
             val (x, y) = translatePosition(userPos)
+            val userX = x; val userY = y
             // TODO Draw debug text
             if (_DEBUG) {
                 canvas.drawText("${x.toInt()}, ${y.toInt()}", width.toFloat()/2, height.toFloat()/2, blackPaint)
@@ -426,6 +487,7 @@ class MapFragment : Fragment() {
                 // TODO drawing debug text
                 if (_DEBUG){
                     canvas.drawText("$device: ${beacon.distances.min()}m", width.toFloat()/4, height.toFloat()/2 + 60*i, blackPaint)
+                    canvas.drawText(beacon.name, x.toFloat(), y.toFloat(), blackPaint)
                 }
                 i+=1
 
@@ -440,6 +502,19 @@ class MapFragment : Fragment() {
                 )
                 canvas.drawText(pin.name, (x-radius).toFloat(), (y+radius).toFloat(), blackPaint)
             }
+
+            // draw direction facing
+            // rotate around users position (center)
+            val cHeading = cos((heading + frag!!.OFFSET_HEADING) % 360)
+            val sHeading = sin((heading+ frag!!.OFFSET_HEADING) % 360)
+            val tempXOut = userX
+            val tempYOut = userY + 40
+            var xOut = ((tempXOut-userX) * cHeading) - ((tempYOut-userY) * sHeading) + userX
+            val yOut = ((tempYOut-userY) * cHeading) - ((tempXOut-userX) * sHeading) + userY
+            //Log.e("estimote", "\n${frag!!.userHeading}\n${xOut.toFloat()}, ${yOut.toFloat()}")
+            blackPaint.strokeWidth = 10f
+            canvas.drawLine(userX.toFloat(), userY.toFloat(), xOut.toFloat(), yOut.toFloat(), blackPaint)
+
         }
 
         override fun setAlpha(alpha: Int) {
@@ -454,5 +529,17 @@ class MapFragment : Fragment() {
         override fun getOpacity(): Int =
             // Must be PixelFormat.UNKNOWN, TRANSLUCENT, TRANSPARENT, or OPAQUE
             PixelFormat.OPAQUE
+    }
+
+    class NorthListener(fragment: MapFragment): SensorEventListener {
+        private val frag: MapFragment = fragment
+        override fun onSensorChanged(event: SensorEvent) {
+            frag.userHeading = (event.values[0].toDouble() - 180) * Math.PI/180
+            //Log.e("estimote", "heading ${event.values[0]}")
+        }
+
+        override fun onAccuracyChanged(p0: Sensor?, p1: Int) {
+        }
+
     }
 }
