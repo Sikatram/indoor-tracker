@@ -41,7 +41,6 @@ class MapFragment : Fragment() {
     private var handler: ProximityObserver.Handler? = null
     private var observer: ProximityObserver? = null
     private var sensorManager: SensorManager? = null
-    private var rotationSensor: Sensor? = null
     private var northListener: NorthListener? = null
 
     // Set this to your app id/token from cloud.estimote website
@@ -52,7 +51,7 @@ class MapFragment : Fragment() {
     private var lastPositions: Queue<Pair<Double, Double>> = LinkedList()
 
     // TODO calibrate these per room
-    var OFFSET_HEADING: Double = 30 * Math.PI/180
+    var OFFSET_HEADING: Double = 10.0 * Math.PI/180
     private var beacons: Map<String, Beacon> = mapOf(
         "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.5 to 3.0)),
         "d1610eab3fc6f11a0de3a9924280393d" to Beacon("d1610eab3fc6f11a0de3a9924280393d", "I", (3.0 to 3.0)),
@@ -475,8 +474,7 @@ class MapFragment : Fragment() {
             }
             canvas.drawCircle(x.toFloat(), y.toFloat(), radius*1.5f, redPaint)
 
-            // TODO Drawing beacons
-
+            // Drawing beacons
             var i = 2
             for (beacon in frag!!.beacons.values.iterator()) {
                 val device = beacon.name
@@ -507,10 +505,9 @@ class MapFragment : Fragment() {
             // rotate around users position (center)
             val cHeading = cos((heading + frag!!.OFFSET_HEADING) % 360)
             val sHeading = sin((heading+ frag!!.OFFSET_HEADING) % 360)
-            val tempXOut = userX
-            val tempYOut = userY + 40
-            var xOut = ((tempXOut-userX) * cHeading) - ((tempYOut-userY) * sHeading) + userX
-            val yOut = ((tempYOut-userY) * cHeading) - ((tempXOut-userX) * sHeading) + userY
+            val tempYOut = userY + radius * 1.7
+            var xOut =  -((tempYOut-userY) * sHeading) + userX
+            val yOut = ((tempYOut-userY) * cHeading) + userY
             //Log.e("estimote", "\n${frag!!.userHeading}\n${xOut.toFloat()}, ${yOut.toFloat()}")
             blackPaint.strokeWidth = 10f
             canvas.drawLine(userX.toFloat(), userY.toFloat(), xOut.toFloat(), yOut.toFloat(), blackPaint)

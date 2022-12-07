@@ -41,6 +41,14 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSupportNavigateUp(): Boolean {
         findNavController(R.id.nav_host_fragment_activity_main).navigateUp()
+
         return super.onSupportNavigateUp()
+    }
+
+    override fun onDestroy() {
+        if (db != null) {
+            db!!.close()
+        }
+        return super.onDestroy()
     }
 }
