@@ -49,9 +49,11 @@ class MapFragment : Fragment() {
 
     // Set this to your app id/token from cloud.estimote website
     private val cloudCredentials = EstimoteCloudCredentials("beacon-test-eric-chs" , "a0545bb6c94e40729210f58edf665bd2")
-    private val executor: ExecutorService = Executors.newFixedThreadPool(1)
+    private val executor: ExecutorService = Executors.newFixedThreadPool(2)
     private var drawFuture: Future<*>? = null
-    val FPS: Long = 20
+    private var positionFuture: Future<*>? = null
+    val FPS: Long = 8
+    val POSITION_UPDATES: Long = 8
 
     private var sensorManager: SensorManager? = null
     private var northListener: NorthListener? = null
@@ -61,7 +63,7 @@ class MapFragment : Fragment() {
     private var lastPositions: Queue<Pair<Double, Double>> = LinkedList()
 
     // TODO calibrate these per room
-    var OFFSET_HEADING: Double = 10.0 * Math.PI/180
+    var OFFSET_HEADING: Double = 15.0 * Math.PI/180
     private var beacons: Map<String, Beacon> = mapOf(
         "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.5 to 3.0)),
         "d1610eab3fc6f11a0de3a9924280393d" to Beacon("d1610eab3fc6f11a0de3a9924280393d", "I", (3.0 to 3.0)),
@@ -72,8 +74,8 @@ class MapFragment : Fragment() {
     // TODO end
     private var userHeading: Double = 0.0
 
-    private val STEP: Double = 1.0/4.0
-    private val MAX_QUEUE_SIZE: Int = 20
+    private val STEP: Double = 1.0/3.0
+    private val MAX_QUEUE_SIZE: Int = 12
 
     private var draw: MyDrawable? = null
     var pins: ArrayList<EmployeeEntity> = ArrayList()
@@ -160,12 +162,13 @@ class MapFragment : Fragment() {
                     .withBalancedPowerMode()
                     .build()
 
-                val zones: MutableList<ProximityZone> = mutableListOf()
+                val tempzones: MutableList<ProximityZone> = mutableListOf()
 
                 // Build the zone you want to observer
                 for (i in 0 until (15/STEP).toInt()) {
-                    zones.add(createZone(index = i, step = STEP, offset = STEP))
+                    tempzones.add(createZone(index = i, step = STEP, offset = STEP))
                 }
+                val zones = tempzones.toList()
 
                 // start observing, save the handler for later so we can stop it in onDestroy
                 handler = observer!!.startObserving(zones)
@@ -178,7 +181,9 @@ class MapFragment : Fragment() {
                 //Log.e("estimote", "Error: ${t.message}")
             }
         )
-        drawFuture = executor.submit(DrawRunner(this))
+        if (drawFuture == null || drawFuture!!.isDone){
+            drawFuture = executor.submit(DrawRunner(this))
+        }
     }
 
     class DrawRunner(m: MapFragment): Runnable {
@@ -188,22 +193,68 @@ class MapFragment : Fragment() {
             while (true){
                 try {
                     Thread.sleep(1000/frag.FPS)
+                    frag.updateUserPosition()
                     frag.draw!!.invalidateSelf()
                 } catch (e: Exception) {
+                    Log.e("estimote", e.stackTraceToString())
                     return
                 }
             }
         }
     }
 
+    class PositionUpdater(m: MapFragment): Runnable {
+        val frag = m
+        override fun run() {
+            while (true){
+                try {
+                    Thread.sleep(1000/frag.POSITION_UPDATES)
+                } catch (e: Exception) {
+                    Log.e("estimote", e.stackTraceToString())
+                    return
+                }
+            }
+        }
+    }
+
+    private fun updateUserPosition(){
+        val currentDistances: MutableMap<String, Double?> = mutableMapOf()
+        for (beacon in beacons.values.iterator()) {
+            if (beacon.distances.isEmpty()){
+                currentDistances[beacon.id] = null
+            } else {
+                currentDistances[beacon.id] = beacon.distances.min() - STEP
+            }
+        }
+        var tempPos = calculateCoordinate(currentDistances)
+        tempPos = (
+                min(max(beaconBounds.first.first, tempPos.first), beaconBounds.first.second) to
+                        min(max(beaconBounds.second.first, tempPos.second), beaconBounds.second.second)
+                )
+
+        if (lastPositions.size > MAX_QUEUE_SIZE){
+            lastPositions.remove()
+        }
+        lastPositions.add(tempPos)
+        var avgX = 0.0
+        var avgY = 0.0
+        for (position in lastPositions.iterator()) {
+            avgX += position.first
+            avgY += position.second
+        }
+        draw!!.userPos = avgX/lastPositions.size to avgY/lastPositions.size
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+        observer = null
         draw = null
         // stop the observation handler
         if (handler != null ) {
             Log.d("estimote", "Stop observing")
             handler!!.stop()
+            handler = null
         }
         if (sensorManager != null && northListener != null) {
             sensorManager!!.unregisterListener(northListener)
@@ -212,6 +263,11 @@ class MapFragment : Fragment() {
         }
         if (drawFuture != null){
             drawFuture!!.cancel(true)
+            drawFuture = null
+        }
+        if (positionFuture != null) {
+            positionFuture!!.cancel(true)
+            positionFuture = null
         }
     }
 
@@ -229,6 +285,12 @@ class MapFragment : Fragment() {
         }
         if (sensorManager != null && northListener != null) {
             drawFuture!!.cancel(true)
+            drawFuture = null
+
+        }
+        if (positionFuture != null) {
+            positionFuture!!.cancel(true)
+            positionFuture = null
         }
     }
 
@@ -243,7 +305,9 @@ class MapFragment : Fragment() {
                 SensorManager.SENSOR_DELAY_NORMAL
             )
         }
-        drawFuture = executor.submit(DrawRunner(this))
+        if (drawFuture == null || drawFuture!!.isDone){
+            drawFuture = executor.submit(DrawRunner(this))
+        }
 
     }
 
@@ -301,6 +365,7 @@ class MapFragment : Fragment() {
                     }
                     //println()
 
+                    /*
                     val currentDistances: MutableMap<String, Double?> = mutableMapOf()
                     for (beacon in beacons.values.iterator()) {
                         if (beacon.distances.isEmpty()){
@@ -326,6 +391,7 @@ class MapFragment : Fragment() {
                         avgY += position.second
                     }
                     draw!!.userPos = avgX/lastPositions.size to avgY/lastPositions.size
+                    */
 
                     /*
                     val now = System.currentTimeMillis()
@@ -351,48 +417,39 @@ class MapFragment : Fragment() {
         var y = 0.0
         var ratio = 0
 
-        var m = mapOf(
-            beaconIDs[0] to radius[beaconIDs[0]],
+        var p = threePointCalc(beaconIDs[0] to radius[beaconIDs[0]],
             beaconIDs[1] to radius[beaconIDs[1]],
-            beaconIDs[2] to radius[beaconIDs[2]],
+            beaconIDs[2] to radius[beaconIDs[2]]
         )
-        var p = threePointCalc(m)
         if (p != null) {
             x += p.first
             y += p.second
             ratio++
         }
 
-        m = mapOf(
-            beaconIDs[0] to radius[beaconIDs[0]],
+        p = threePointCalc(beaconIDs[0] to radius[beaconIDs[0]],
             beaconIDs[1] to radius[beaconIDs[1]],
-            beaconIDs[3] to radius[beaconIDs[3]],
-        )
-        p = threePointCalc(m)
+            beaconIDs[3] to radius[beaconIDs[3]])
         if (p != null) {
             x += p.first
             y += p.second
             ratio++
         }
 
-        m = mapOf(
-            beaconIDs[0] to radius[beaconIDs[0]],
+        p = threePointCalc(beaconIDs[0] to radius[beaconIDs[0]],
             beaconIDs[3] to radius[beaconIDs[3]],
-            beaconIDs[2] to radius[beaconIDs[2]],
+            beaconIDs[2] to radius[beaconIDs[2]]
         )
-        p = threePointCalc(m)
         if (p != null) {
             x += p.first
             y += p.second
             ratio++
         }
 
-        m = mapOf(
-            beaconIDs[3] to radius[beaconIDs[3]],
+
+        p = threePointCalc(beaconIDs[3] to radius[beaconIDs[3]],
             beaconIDs[1] to radius[beaconIDs[1]],
-            beaconIDs[2] to radius[beaconIDs[2]],
-        )
-        p = threePointCalc(m)
+            beaconIDs[2] to radius[beaconIDs[2]])
         if (p != null) {
             x += p.first
             y += p.second
@@ -401,21 +458,32 @@ class MapFragment : Fragment() {
         return x/ratio to y/ratio
     }
 
-    private fun threePointCalc(beaconRadius: Map<String, Double?>): Pair<Double, Double>? {
-        val idIter = beaconRadius.keys.iterator()
-        var key = idIter.next()
+    private fun threePointCalc(vararg beaconRadius: Pair<String, Double?>): Pair<Double, Double>? {
+        val idIter = beaconRadius.iterator()
+
+        var (key, r1) = idIter.next()
+        if (r1 == null) {
+            return null
+        }
 
         val (x1, y1) = beacons[key]!!.position
-        val r1 = beaconRadius[key] ?: return null
 
-        key = idIter.next()
+        var bp = idIter.next()
+        key = bp.first
+        val r2 = bp.second
+        if (r2 == null) {
+            return null
+        }
         val (x2, y2) = beacons[key]!!.position
-        val r2 = beaconRadius[key]?: return null
 
 
-        key = idIter.next()
+        bp = idIter.next()
+        key = bp.first
+        val r3 = bp.second
+        if (r3 == null) {
+            return null
+        }
         val (x3, y3) = beacons[key]!!.position
-        val r3 = beaconRadius[key]?: return null
 
         val A = 2*x2 - 2*x1
         val B = 2*y2 - 2*y1
@@ -547,24 +615,29 @@ class MapFragment : Fragment() {
             // Draw room bounds
             val (tlX, tlY) = translatePosition(xBounds.first, yBounds.first)
             val (brX, brY) = translatePosition(xBounds.second, yBounds.second)
+            val tlXF = tlX.toFloat()
+            val tlYF = tlY.toFloat()
+            val brXF = brX.toFloat()
+            val brYF = brY.toFloat()
+
             canvas.drawLine(
-                tlX.toFloat(), tlY.toFloat(),
-                tlX.toFloat(), brY.toFloat(),
+                tlXF, tlYF,
+                tlXF, brYF,
                 roomPaint
             )
             canvas.drawLine(
-                tlX.toFloat(), tlY.toFloat(),
-                brX.toFloat(), tlY.toFloat(),
+                tlXF, tlYF,
+                brXF, tlYF,
                 roomPaint
             )
             canvas.drawLine(
-                brX.toFloat(), brY.toFloat(),
-                brX.toFloat(), tlY.toFloat(),
+                brXF, brYF,
+                brXF, tlYF,
                 roomPaint
             )
             canvas.drawLine(
-                brX.toFloat(), brY.toFloat(),
-                tlX.toFloat(), brY.toFloat(),
+                brXF, brYF,
+                tlXF, brYF,
                 roomPaint
             )
 
