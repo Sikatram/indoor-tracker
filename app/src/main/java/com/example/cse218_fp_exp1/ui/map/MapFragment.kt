@@ -1,5 +1,6 @@
 package com.example.cse218_fp_exp1.ui.map
 
+import android.app.Notification
 import android.content.Context.SENSOR_SERVICE
 import android.graphics.*
 import android.graphics.drawable.Drawable
@@ -23,8 +24,12 @@ import com.example.cse218_fp_exp1.MainActivity
 import com.example.cse218_fp_exp1.R
 import com.example.cse218_fp_exp1.databinding.FragmentMapBinding
 import com.example.cse218_fp_exp1.db.EmployeeEntity
+import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.launch
 import java.util.*
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import kotlin.math.*
 
 class Beacon(ID: String, Name: String, Position: Pair<Double, Double>) {
@@ -34,20 +39,25 @@ class Beacon(ID: String, Name: String, Position: Pair<Double, Double>) {
     var position: Pair<Double, Double> = Position
 }
 
-var _DEBUG = true
+var _DEBUG = false
 
 class MapFragment : Fragment() {
     private var _binding: FragmentMapBinding? = null
+
     private var handler: ProximityObserver.Handler? = null
     private var observer: ProximityObserver? = null
-    private var sensorManager: SensorManager? = null
-    private var northListener: NorthListener? = null
 
     // Set this to your app id/token from cloud.estimote website
     private val cloudCredentials = EstimoteCloudCredentials("beacon-test-eric-chs" , "a0545bb6c94e40729210f58edf665bd2")
+    private val executor: ExecutorService = Executors.newFixedThreadPool(1)
+    private var drawFuture: Future<*>? = null
+    val FPS: Long = 20
+
+    private var sensorManager: SensorManager? = null
+    private var northListener: NorthListener? = null
+
 
     // map of beacon IDs to the distances
-    private var lastUpdate: Long = 0
     private var lastPositions: Queue<Pair<Double, Double>> = LinkedList()
 
     // TODO calibrate these per room
@@ -55,15 +65,15 @@ class MapFragment : Fragment() {
     private var beacons: Map<String, Beacon> = mapOf(
         "687572e4da15128f8cc1096f874d1a37" to Beacon("687572e4da15128f8cc1096f874d1a37", "L", (0.5 to 3.0)),
         "d1610eab3fc6f11a0de3a9924280393d" to Beacon("d1610eab3fc6f11a0de3a9924280393d", "I", (3.0 to 3.0)),
-        "257356716b5cd63031e00e52664b2114" to Beacon("257356716b5cd63031e00e52664b2114", "N", (0.5 to 0.5)),
         "90fe98ec293340f451d32480c3fe262a" to Beacon("90fe98ec293340f451d32480c3fe262a", "E", (3.0 to 0.5)),
+        "257356716b5cd63031e00e52664b2114" to Beacon("257356716b5cd63031e00e52664b2114", "N", (0.5 to 0.5)),
     )
     private var beaconBounds: Pair<Pair<Double, Double>, Pair<Double, Double>> = (0.0 to 3.5) to (0.0 to 3.5)
     // TODO end
     private var userHeading: Double = 0.0
 
-    private val STEP: Double = 1.0/(3.toDouble())
-    private val MAX_QUEUE_SIZE: Int = 16
+    private val STEP: Double = 1.0/4.0
+    private val MAX_QUEUE_SIZE: Int = 20
 
     private var draw: MyDrawable? = null
     var pins: ArrayList<EmployeeEntity> = ArrayList()
@@ -86,8 +96,10 @@ class MapFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+
         northListener = NorthListener(this)
         sensorManager = (requireContext().getSystemService(SENSOR_SERVICE)) as? SensorManager
+
         if (sensorManager != null) {
             sensorManager!!.registerListener(
                 northListener,
@@ -95,7 +107,6 @@ class MapFragment : Fragment() {
                 SensorManager.SENSOR_DELAY_NORMAL
             )
         }
-
 
         val employeeDao = (requireActivity() as MainActivity).db!!.employeeDao()
         draw = MyDrawable()
@@ -146,7 +157,7 @@ class MapFragment : Fragment() {
                     .withEstimoteSecureMonitoringDisabled()
                     .withTelemetryReportingDisabled()
                     .withAnalyticsReportingDisabled()
-                    .withLowLatencyPowerMode()
+                    .withBalancedPowerMode()
                     .build()
 
                 val zones: MutableList<ProximityZone> = mutableListOf()
@@ -167,6 +178,22 @@ class MapFragment : Fragment() {
                 //Log.e("estimote", "Error: ${t.message}")
             }
         )
+        drawFuture = executor.submit(DrawRunner(this))
+    }
+
+    class DrawRunner(m: MapFragment): Runnable {
+        val frag = m
+
+        override fun run() {
+            while (true){
+                try {
+                    Thread.sleep(1000/frag.FPS)
+                    frag.draw!!.invalidateSelf()
+                } catch (e: Exception) {
+                    return
+                }
+            }
+        }
     }
 
     override fun onDestroyView() {
@@ -178,9 +205,19 @@ class MapFragment : Fragment() {
             Log.d("estimote", "Stop observing")
             handler!!.stop()
         }
-        if (sensorManager != null) {
+        if (sensorManager != null && northListener != null) {
             sensorManager!!.unregisterListener(northListener)
+            northListener = null
+
         }
+        if (drawFuture != null){
+            drawFuture!!.cancel(true)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        executor.shutdownNow()
     }
 
     override fun onPause() {
@@ -188,19 +225,26 @@ class MapFragment : Fragment() {
         // to stop the listener and save battery
         if (sensorManager != null) {
             sensorManager!!.unregisterListener(northListener)
+            northListener = null
+        }
+        if (sensorManager != null && northListener != null) {
+            drawFuture!!.cancel(true)
         }
     }
 
     override fun onResume() {
         super.onResume()
         // code for system's orientation sensor registered listeners
-        if (sensorManager != null) {
+        if (sensorManager != null && northListener == null) {
+            northListener = NorthListener(this)
             sensorManager!!.registerListener(
                 northListener,
                 sensorManager!!.getDefaultSensor(Sensor.TYPE_ORIENTATION),
                 SensorManager.SENSOR_DELAY_NORMAL
             )
         }
+        drawFuture = executor.submit(DrawRunner(this))
+
     }
 
     private fun createZone(index: Int, step: Double = 1.0, offset: Double = 0.0) : ProximityZone{
@@ -283,12 +327,14 @@ class MapFragment : Fragment() {
                     }
                     draw!!.userPos = avgX/lastPositions.size to avgY/lastPositions.size
 
+                    /*
                     val now = System.currentTimeMillis()
                         if (now > lastUpdate + 125) {
                         lastUpdate = now
                         //binding.imageFirst.setImageDrawable(draw)
                         binding.imageFirst.invalidate()
                     }
+                     */
                 } catch (e: Exception){
                     Log.e("estimote", e.toString())
                 }
@@ -394,7 +440,10 @@ class MapFragment : Fragment() {
         private var heading: Double = 0.0
 
         private val redPaint: Paint = Paint().apply { setARGB(255, 255, 0, 0) }
-        private val blackPaint: Paint = Paint().apply { setARGB(255, 0, 0, 0); textSize=48f }
+        private val blackPaint: Paint = Paint().apply { setARGB(255, 0, 0, 0); textSize=48f;}
+        private val linePaint: Paint = Paint().apply { setARGB(255, 0x88, 0x88, 0x88);}
+        private val roomPaint: Paint = Paint().apply { setARGB(255, 0xf4, 0xf4, 0xf4); strokeWidth=32f}
+
         private val bluePaint: Paint = Paint().apply { setARGB(255, 0, 120, 255) }
         private val greenPaint: Paint = Paint().apply { setARGB(255, 20, 220, 50) }
 
@@ -458,11 +507,67 @@ class MapFragment : Fragment() {
             //println("starting draw")
             // cache heading value incase it changes
             heading = frag!!.userHeading
-            canvas.drawColor(Color.LTGRAY)
             // Get the drawable's bounds
             val width: Int = bounds.width()
             val height: Int = bounds.height()
             val radius: Float = min(width, height).toFloat() / 50
+            canvas.drawColor(Color.LTGRAY)
+
+            // draw grid
+            val (xBounds, yBounds) = frag!!.beaconBounds
+            // horizontal lines
+            for (i in (xBounds.first.toInt()-1 .. xBounds.second.toInt()+1)) {
+                var (x, _) = translatePosition(i.toDouble(), 0.0)
+                canvas.drawLine(
+                    x.toFloat(), 0f,
+                    x.toFloat(), height.toFloat(),
+                    linePaint
+                )
+                val (x2, _) = translatePosition(i.toDouble()+0.5, 0.0)
+                canvas.drawLine(
+                    x2.toFloat(), 0f,
+                    x2.toFloat(), height.toFloat(),
+                    linePaint
+                )
+            }
+            for (i in (yBounds.first.toInt()-1 .. yBounds.second.toInt()+1)) {
+                val (_, y) = translatePosition(0.0, i.toDouble())
+                canvas.drawLine(
+                    0f, y.toFloat(),
+                    width.toFloat(), y.toFloat(),
+                    linePaint
+                )
+                val (_, y2) = translatePosition(0.0, i.toDouble()+0.5)
+                canvas.drawLine(
+                    0f, y2.toFloat(),
+                    width.toFloat(), y2.toFloat(),
+                    linePaint
+                )
+            }
+            // Draw room bounds
+            val (tlX, tlY) = translatePosition(xBounds.first, yBounds.first)
+            val (brX, brY) = translatePosition(xBounds.second, yBounds.second)
+            canvas.drawLine(
+                tlX.toFloat(), tlY.toFloat(),
+                tlX.toFloat(), brY.toFloat(),
+                roomPaint
+            )
+            canvas.drawLine(
+                tlX.toFloat(), tlY.toFloat(),
+                brX.toFloat(), tlY.toFloat(),
+                roomPaint
+            )
+            canvas.drawLine(
+                brX.toFloat(), brY.toFloat(),
+                brX.toFloat(), tlY.toFloat(),
+                roomPaint
+            )
+            canvas.drawLine(
+                brX.toFloat(), brY.toFloat(),
+                tlX.toFloat(), brY.toFloat(),
+                roomPaint
+            )
+
 
             // Draw a red circle in the center mark user position
             val (x, y) = translatePosition(userPos)

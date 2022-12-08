@@ -38,6 +38,9 @@ class DashboardFragment : Fragment() {
         binding.button.setOnClickListener {
             findNavController().navigate(R.id.action_dashboard_to_map)
         }
+        binding.button2.setOnClickListener {
+            findNavController().navigate(R.id.action_dashboard_to_pin)
+        }
         return root
     }
 

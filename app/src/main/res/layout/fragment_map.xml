@@ -15,6 +15,7 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="90"
+            android:contentDescription="@string/title_map"
             />
         <LinearLayout
             android:id="@+id/bottom_buttons"
@@ -37,7 +38,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
                 android:layout_marginHorizontal="5dp"
-                android:text="@string/pin" />
+                android:text="@string/pin"
+                android:backgroundTint="@color/teal_700"
+                />
 
         </LinearLayout>
     </LinearLayout>
